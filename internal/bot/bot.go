@@ -592,7 +592,7 @@ func (d *Dispatcher) handleReport(ctx context.Context, chatID int64, user store.
 
 	pdfBytes, err := report.Build(report.Data{
 		From: from, To: to, Txns: txns, Currencies: currencies,
-		TZ: d.tz, Generated: now,
+		TZ: d.tz, Generated: now, GroupByCategory: filter.OrderBy == "category",
 	})
 	if err != nil {
 		d.log.Error("build report failed", "err", err)

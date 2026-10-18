@@ -74,3 +74,21 @@ func TestHandleReportEmpty(t *testing.T) {
 		t.Errorf("empty reply wrong: %v", sender.messages)
 	}
 }
+
+func TestHandleReportOrderByCategory(t *testing.T) {
+	fs := &fakeStore{rows: []store.Transaction{
+		{ID: 1, UserID: 55, Item: "nasi lemak", CategoryName: "Meals", CurrencyCode: "MYR",
+			TotalAmount: "10.50", Direction: "expense", EntryDate: time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)},
+	}}
+	fai := &fakeAI{recapResponses: map[string]ai.RecapFilter{
+		"full report august order by category": {IsRecapRequest: true, DateFrom: "2026-08-01", DateTo: "2026-09-01", Language: "EN", OrderBy: "category"},
+	}}
+	sender := &fakeSender{}
+	d := newTestDispatcher(fs, fai, sender)
+
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "full report august order by category"})
+
+	if len(sender.documents) != 1 || !strings.HasPrefix(string(sender.lastDoc[:5]), "%PDF") {
+		t.Fatalf("grouped report not sent: docs=%d msgs=%v", len(sender.documents), sender.messages)
+	}
+}

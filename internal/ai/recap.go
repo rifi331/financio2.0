@@ -16,6 +16,7 @@ type RecapFilter struct {
 	DateTo         string   `json:"date_to"`   // YYYY-MM-DD
 	Categories     []string `json:"categories"`
 	Language       string   `json:"language"`
+	OrderBy        string   `json:"order_by"` // "date" (default) | "category"
 }
 
 // ParseRecapFilter asks the model to interpret a recap request into a
@@ -75,6 +76,9 @@ Rules:
   Map synonyms loosely ("makan" -> Meals, "belanja" -> Groceries,
   "transport" -> Public Transportation). Use [] for no category filter.
 - language: "ID" when the request is Indonesian, otherwise "EN".
+- order_by: "category" when the user asks to order/group by category
+  ("order by category", "group by category", "urutkan berdasarkan kategori"),
+  otherwise "date".
 - Set is_recap_request=false with empty fields ONLY when the message does
   not ask about any period of transactions at all (greetings, chit-chat).`,
 		strings.Join(categories, ", "))
@@ -85,11 +89,12 @@ func recapSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"is_recap_request", "date_from", "date_to", "categories", "language"},
+		"required":             []string{"is_recap_request", "date_from", "date_to", "categories", "language", "order_by"},
 		"properties": map[string]any{
 			"is_recap_request": prop("boolean"),
 			"date_from":        prop("string"),
 			"date_to":          prop("string"),
+			"order_by":         map[string]any{"type": "string", "enum": []string{"date", "category"}},
 			"categories": map[string]any{
 				"type":  "array",
 				"items": prop("string"),

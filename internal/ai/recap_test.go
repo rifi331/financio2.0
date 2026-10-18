@@ -109,3 +109,17 @@ func TestParseRecapFilterDuplicateCheck(t *testing.T) {
 		t.Errorf("filter = %+v", f)
 	}
 }
+
+func TestParseRecapFilterOrderByCategory(t *testing.T) {
+	srv := recapServer(t, `{"is_recap_request":true,"date_from":"2026-08-01","date_to":"2026-08-31","categories":[],"language":"EN","order_by":"category"}`)
+	defer srv.Close()
+
+	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
+		"full report august order by category", today, []string{"Meals"}, "")
+	if err != nil {
+		t.Fatalf("ParseRecapFilter: %v", err)
+	}
+	if f.OrderBy != "category" {
+		t.Errorf("order_by = %q", f.OrderBy)
+	}
+}

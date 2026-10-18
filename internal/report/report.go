@@ -29,6 +29,9 @@ type Data struct {
 	Currencies []store.Currency    // for decimal places
 	TZ         *time.Location
 	Generated  time.Time
+	// GroupByCategory renders the tables grouped under category headings
+	// (rows by date within each) instead of one date-ordered table.
+	GroupByCategory bool
 }
 
 func decimalPlaces(currencies []store.Currency, code string) int {
@@ -245,6 +248,30 @@ func txnTable(pdf *fpdf.Fpdf, txns []store.Transaction, d Data) {
 		note(pdf, "No transactions.")
 		return
 	}
+	if d.GroupByCategory {
+		byCat := map[string][]store.Transaction{}
+		var cats []string
+		for _, t := range txns {
+			if _, ok := byCat[t.CategoryName]; !ok {
+				cats = append(cats, t.CategoryName)
+			}
+			byCat[t.CategoryName] = append(byCat[t.CategoryName], t)
+		}
+		sort.Strings(cats)
+		for _, c := range cats {
+			if pdf.GetY() > 250 {
+				pdf.AddPage()
+			}
+			heading(pdf, c)
+			txnRows(pdf, byCat[c], d)
+			pdf.Ln(2)
+		}
+		return
+	}
+	txnRows(pdf, txns, d)
+}
+
+func txnRows(pdf *fpdf.Fpdf, txns []store.Transaction, d Data) {
 	pdf.SetFont("Helvetica", "B", 8)
 	pdf.SetFillColor(230, 234, 238)
 	w := []float64{22, 95, 40, 28}

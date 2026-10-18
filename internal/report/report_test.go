@@ -86,3 +86,15 @@ func TestParseAmount(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestBuildGroupByCategory(t *testing.T) {
+	d := sampleData()
+	d.GroupByCategory = true
+	b, err := Build(d)
+	if err != nil {
+		t.Fatalf("build grouped: %v", err)
+	}
+	if !bytes.HasPrefix(b, []byte("%PDF")) {
+		t.Error("not a PDF")
+	}
+}
