@@ -27,15 +27,12 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          push: true
           provenance: false
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.head_commit.timestamp }}
-          # oci-mediatypes=false: push classic Docker v2 manifests — the OCI
-          # index buildx pushes by default makes ghcr return "manifest unknown"
-          # to older Docker clients (TrueNAS custom apps).
-          outputs: type=image,name=${{ env.IMAGE }},push=true,oci-mediatypes=false
           tags: |
             ${{ env.IMAGE }}:${{ github.ref_name }}
       - name: Check image size (< 30 MB)
