@@ -31,6 +31,8 @@ Single process, single replica (long polling holds the `getUpdates` lock — nev
 past 1). Timezone `Asia/Kuala_Lumpur` (configurable). Currencies seeded: IDR, MYR, USD,
 SGD (extensible via table). Categories seeded from 1.0: Groceries, Medical, Utilities,
 Housing, Meals, Entertainment, Living Expenses, Education, Public Transportation, Others.
+Extended set (user, 2026-10-18; singular forms canonical): + Sport Equipments, Snacks,
+Lifestyles, Fuel & Gas, Drinks, Clothings, Furnitures, Car Maintenances.
 Default currency MYR unless the message says otherwise (`Rp` → IDR, `rm` → MYR, `s$`/`sgd`
 → SGD, `$`/`usd` → USD). Languages: English and Bahasa Indonesia.
 
