@@ -14,6 +14,12 @@ Replaces the n8n "Financio postgres" automation.
 - **Receipts**: send a **photo** of a receipt (vision parsing; one transaction
   with line-item details) or a **bank-statement PDF** (text extraction with a
   30KB guard; spending rows kept, wallet top-up "Receive" rows skipped).
+- **Duplicate check**: `check duplicate oct` / `cek duplikat oktober` — lists
+  same item+amount+date groups, with ids ready for `delete <id>`.
+- **Full report**: `full report oct 2026` / `laporan lengkap oktober` — PDF with
+  summary, per-currency expense pie charts, and income/expense tables.
+- **Web dashboard**: token-gated read-only UI on `HEALTH_PORT` — transactions
+  with filters, per-currency net totals, live log tail (`DASHBOARD_TOKEN`).
 - **Help**: `/start`, `/help` — bilingual usage card.
 - **Hardened**: panic in any handler is recovered and logged; 90s per-message
   timeout; at most 4 messages processed concurrently with per-chat ordering;
