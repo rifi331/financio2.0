@@ -63,6 +63,7 @@ type TxnFilter struct {
 	UserID     int64
 	From, To   time.Time
 	Categories []string
+	Direction  string // "expense" | "income", "" = both
 }
 
 // ErrUnknownCategory is returned when InsertTransaction is given a category
@@ -225,6 +226,9 @@ func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]Transactio
 	}
 	if len(f.Categories) > 0 {
 		clauses = append(clauses, "category_id = ANY("+arg(f.Categories)+")")
+	}
+	if f.Direction != "" {
+		clauses = append(clauses, "t.direction = "+arg(f.Direction))
 	}
 
 	rows, err := s.pool.Query(ctx, `

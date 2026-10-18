@@ -370,7 +370,8 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 
 	validCats := intersect(filter.Categories, categories)
 
-	f := store.TxnFilter{UserID: user.ID, From: from, To: to, Categories: validCats}
+	// Recap reports spending only — income rows are excluded from the totals.
+	f := store.TxnFilter{UserID: user.ID, From: from, To: to, Categories: validCats, Direction: "expense"}
 	txns, err := d.store.ListTransactions(ctx, f)
 	if err != nil {
 		d.log.Error("list transactions failed", "err", err)

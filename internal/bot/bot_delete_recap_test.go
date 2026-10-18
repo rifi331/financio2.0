@@ -131,6 +131,7 @@ func TestRecapFlow(t *testing.T) {
 	}
 	// The store filter must be typed values only — user text never enters SQL.
 	if fs.lastFilter == nil || fs.lastFilter.UserID != 55 ||
+		fs.lastFilter.Direction != "expense" || // recap is spending-only
 		len(fs.lastFilter.Categories) != 1 || fs.lastFilter.Categories[0] != "Meals" {
 		t.Errorf("filter = %+v", fs.lastFilter)
 	}
