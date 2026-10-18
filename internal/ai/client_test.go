@@ -148,11 +148,11 @@ func TestParseEntrySuccess(t *testing.T) {
 			!req.ResponseFormat.JSONSchema.Strict {
 			t.Errorf("response_format wrong: %+v", req.ResponseFormat)
 		}
-		if !strings.Contains(req.Messages[1].Content, "[Current date: 2026-10-18]") {
+		if req.Messages[1].Content != "[Current date: 2026-10-18]\n10rm nasi lemak" {
 			t.Errorf("current date not injected: %q", req.Messages[1].Content)
 		}
-		if !strings.Contains(req.Messages[0].Content, "Meals") ||
-			!strings.Contains(req.Messages[0].Content, "MYR, IDR") {
+		if !strings.Contains(req.Messages[0].Content.(string), "Meals") ||
+			!strings.Contains(req.Messages[0].Content.(string), "MYR, IDR") {
 			t.Errorf("categories/currencies not in system prompt: %q", req.Messages[0].Content)
 		}
 		_, _ = w.Write([]byte(okBody(string(raw))))

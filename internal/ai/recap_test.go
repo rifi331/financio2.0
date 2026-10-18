@@ -20,10 +20,10 @@ func recapServer(t *testing.T, raw string) *httptest.Server {
 		if req.ResponseFormat == nil || !req.ResponseFormat.JSONSchema.Strict {
 			t.Errorf("response_format wrong: %+v", req.ResponseFormat)
 		}
-		if !strings.Contains(req.Messages[1].Content, "[Today's date: 2026-10-18]") {
+		if !strings.Contains(req.Messages[1].Content.(string), "[Today's date: 2026-10-18]") {
 			t.Errorf("today not injected: %q", req.Messages[1].Content)
 		}
-		if !strings.Contains(req.Messages[0].Content, "this list: Meals") {
+		if !strings.Contains(req.Messages[0].Content.(string), "this list: Meals") {
 			t.Errorf("categories not in system prompt: %q", req.Messages[0].Content)
 		}
 		_, _ = w.Write([]byte(okBody(raw)))

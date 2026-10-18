@@ -81,7 +81,7 @@ func recapSchema() map[string]any {
 			"date_from":        prop("string"),
 			"date_to":          prop("string"),
 			"categories": map[string]any{
-				"type": "array",
+				"type":  "array",
 				"items": prop("string"),
 			},
 			"language": map[string]any{"type": "string", "enum": []string{"EN", "ID"}},

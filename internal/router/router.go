@@ -15,13 +15,16 @@ const (
 	IntentRecap
 	IntentPhoto
 	IntentPDF
+	IntentHelp
 )
 
 // Message is the normalized inbound message shape the router needs.
 type Message struct {
 	Text           string
 	HasPhoto       bool
+	PhotoFileID    string // file_id of the largest photo size, "" otherwise
 	DocumentName   string // file name for document messages, "" otherwise
+	DocumentFileID string // file_id of the document, "" otherwise
 }
 
 // Intent is the classification result. DeleteID is set only for IntentDelete.
@@ -32,6 +35,8 @@ type Intent struct {
 }
 
 var deleteRe = regexp.MustCompile(`(?i)^\s*(hapus|delete|del)\s+#?(\d+)\s*$`)
+
+var helpRe = regexp.MustCompile(`^/(start|help)(@\w+)?$`)
 
 var recapWords = []string{"recap", "rekap", "summary", "ringkasan"}
 
@@ -44,6 +49,10 @@ func Classify(m Message) Intent {
 	}
 	if strings.HasSuffix(strings.ToLower(m.DocumentName), ".pdf") {
 		return Intent{Kind: IntentPDF, Text: m.Text}
+	}
+
+	if helpRe.MatchString(strings.TrimSpace(m.Text)) {
+		return Intent{Kind: IntentHelp, Text: m.Text}
 	}
 
 	if match := deleteRe.FindStringSubmatch(m.Text); match != nil {
@@ -63,3 +72,25 @@ func Classify(m Message) Intent {
 
 	return Intent{Kind: IntentEntry, Text: m.Text}
 }
+
+// IntentName returns a stable label for logs.
+func (k IntentKind) String() string {
+	switch k {
+	case IntentEntry:
+		return "entry"
+	case IntentDelete:
+		return "delete"
+	case IntentRecap:
+		return "recap"
+	case IntentPhoto:
+		return "photo"
+	case IntentPDF:
+		return "pdf"
+	case IntentHelp:
+		return "help"
+	}
+	return "unknown"
+}
+
+// IntentName is a wrapper kept for callers that prefer a function form.
+func IntentName(k IntentKind) string { return k.String() }

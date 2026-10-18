@@ -34,6 +34,21 @@ Housing, Meals, Entertainment, Living Expenses, Education, Public Transportation
 Default currency MYR unless the message says otherwise (`Rp` → IDR, `rm` → MYR, `s$`/`sgd`
 → SGD, `$`/`usd` → USD). Languages: English and Bahasa Indonesia.
 
+## Secrets policy (hard rule)
+
+No API key, bot token, password, or DSN may ever be committed to this git repo — not in
+code, comments, test fixtures, example files, log captures, or filled-in manifests.
+Git history is permanent: anything committed once stays recoverable even after deletion,
+and the only safe remedy for a leaked secret is rotation. Therefore:
+
+- All secrets enter at runtime via the env vars under "Config"; `config.String()` must
+  redact them from logs.
+- The deploy manifest ships with placeholders only; real values are substituted at apply
+  time, never saved to a tracked file.
+- Manual test runs with a real token use an untracked `.env` (gitignored).
+- If a secret is accidentally committed anyway: rotate it immediately, then rewrite
+  history if the repo was already pushed.
+
 ## Schema
 
 ```sql

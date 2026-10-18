@@ -9,11 +9,11 @@ import (
 
 // EntryInput carries everything ParseEntry needs per request.
 type EntryInput struct {
-	Message           string    // raw user text
-	CurrentDate       string    // YYYY-MM-DD, computed in DISPLAY_TZ by the caller
-	Categories        []string  // active categories from the DB
-	Currencies        []string  // active currency ISO codes from the DB
-	DefaultCurrency   string    // e.g. MYR
+	Message         string   // raw user text
+	CurrentDate     string   // YYYY-MM-DD, computed in DISPLAY_TZ by the caller
+	Categories      []string // active categories from the DB
+	Currencies      []string // active currency ISO codes from the DB
+	DefaultCurrency string   // e.g. MYR
 }
 
 // ParsedEntry is the structured extraction result.

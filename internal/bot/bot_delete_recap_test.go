@@ -21,7 +21,7 @@ func TestDeleteSuccessEN(t *testing.T) {
 	send := &fakeSender{}
 	d := deleteTestDispatcher(fs, &fakeAI{}, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "delete 7"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "delete 7"})
 
 	want := "🗑️ item deleted for id: 7\n🛍️: nasi lemak"
 	if got := send.messages[0]; got != want {
@@ -39,7 +39,7 @@ func TestDeleteSuccessID(t *testing.T) {
 	send := &fakeSender{}
 	d := deleteTestDispatcher(fs, &fakeAI{}, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "hapus #3"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "hapus #3"})
 
 	want := "🗑️ item dengan id 3 sudah dihapus\n🛍️: bakso"
 	if got := send.messages[0]; got != want {
@@ -52,7 +52,7 @@ func TestDeleteNotFound(t *testing.T) {
 	send := &fakeSender{}
 	d := deleteTestDispatcher(fs, &fakeAI{}, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "delete 99"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "delete 99"})
 
 	if got := send.messages[0]; got != "Record not found!" {
 		t.Errorf("reply = %q, want Record not found!", got)
@@ -68,7 +68,7 @@ func TestDeleteNotOwnedIsRecordNotFound(t *testing.T) {
 	send := &fakeSender{}
 	d := deleteTestDispatcher(fs, &fakeAI{}, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "del 7"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "del 7"})
 
 	if got := send.messages[0]; got != "Record not found!" {
 		t.Errorf("reply = %q, want Record not found!", got)
@@ -83,7 +83,7 @@ func TestDeleteNotFoundID(t *testing.T) {
 	send := &fakeSender{}
 	d := deleteTestDispatcher(fs, &fakeAI{}, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "hapus 12"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "hapus 12"})
 
 	if got := send.messages[0]; got != "Catatan tidak ditemukan!" {
 		t.Errorf("reply = %q, want Catatan tidak ditemukan!", got)
@@ -114,7 +114,7 @@ func TestRecapFlow(t *testing.T) {
 	send := &fakeSender{}
 	d := newTestDispatcher(fs, fai, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "recap october"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "recap october"})
 
 	if len(send.messages) != 1 {
 		t.Fatalf("messages = %d, want 1: %q", len(send.messages), send.messages)
@@ -144,7 +144,7 @@ func TestRecapEmpty(t *testing.T) {
 	send := &fakeSender{}
 	d := newTestDispatcher(fs, fai, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "rekap bulan ini"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "rekap bulan ini"})
 
 	if got := send.messages[0]; got != "Tidak ada catatan pada periode ini." {
 		t.Errorf("reply = %q", got)
@@ -159,7 +159,7 @@ func TestRecapInvalidRange(t *testing.T) {
 	send := &fakeSender{}
 	d := newTestDispatcher(fs, fai, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "recap weird"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "recap weird"})
 
 	if len(send.messages) != 1 || send.messages[0] == "" {
 		t.Fatalf("expected one error reply, got %q", send.messages)
@@ -177,7 +177,7 @@ func TestRecapNotRecapRequest(t *testing.T) {
 	send := &fakeSender{}
 	d := newTestDispatcher(fs, fai, send)
 
-	d.Handle(context.Background(), 1, 55, "Rifi", "Anggriawan", router.Message{Text: "recap nov 2025"})
+	d.Handle(context.Background(), 1, 1, 55, "Rifi", "Anggriawan", router.Message{Text: "recap nov 2025"})
 
 	if len(fai.recapRequests) != 1 {
 		t.Fatalf("ParseRecapFilter calls = %d", len(fai.recapRequests))

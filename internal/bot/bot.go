@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -14,9 +15,13 @@ import (
 	"github.com/rifi331/financio/internal/ai"
 	"github.com/rifi331/financio/internal/auth"
 	"github.com/rifi331/financio/internal/recap"
+	"github.com/rifi331/financio/internal/receipt"
 	"github.com/rifi331/financio/internal/router"
 	"github.com/rifi331/financio/internal/store"
 )
+
+// debugStack returns a stack trace for panic logs; wrapped for testability.
+var debugStack = stackBytes
 
 // Sender is the outbound messaging surface the dispatcher needs.
 type Sender interface {
@@ -37,35 +42,71 @@ type TxStore interface {
 type Parser interface {
 	ParseEntry(ctx context.Context, in ai.EntryInput) (ai.ParsedEntry, error)
 	ParseRecapFilter(ctx context.Context, text string, today time.Time, categories []string) (ai.RecapFilter, error)
+	ParsePhotoReceipt(ctx context.Context, image []byte, in ai.ReceiptInput) ([]ai.ParsedEntry, error)
+	ParseTextReceipt(ctx context.Context, text string, in ai.ReceiptInput) ([]ai.ParsedEntry, error)
+}
+
+// Downloader fetches a Telegram file by id (used for photo/PDF media).
+type Downloader interface {
+	Download(ctx context.Context, fileID string) ([]byte, error)
 }
 
 // Dispatcher routes authorized messages to their intent handlers.
 type Dispatcher struct {
-	store    TxStore
-	auth     *auth.Authorizer
-	ai       Parser
-	tg       Sender
-	tz       *time.Location
-	defCur   string
-	nowFn    func() time.Time
-	log      *slog.Logger
+	store  TxStore
+	auth   *auth.Authorizer
+	ai     Parser
+	tg     Sender
+	down   Downloader
+	tz     *time.Location
+	defCur string
+	nowFn  func() time.Time
+	log    *slog.Logger
 }
 
 // NewDispatcher wires the dispatcher. nowFn is injectable for tests (nil -> time.Now).
-func NewDispatcher(s TxStore, a *auth.Authorizer, p Parser, tg Sender, tz *time.Location, defaultCurrency string, nowFn func() time.Time) *Dispatcher {
+func NewDispatcher(s TxStore, a *auth.Authorizer, p Parser, tg Sender, down Downloader, tz *time.Location, defaultCurrency string, nowFn func() time.Time) *Dispatcher {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
-	return &Dispatcher{store: s, auth: a, ai: p, tg: tg, tz: tz, defCur: defaultCurrency,
+	return &Dispatcher{store: s, auth: a, ai: p, tg: tg, down: down, tz: tz, defCur: defaultCurrency,
 		nowFn: nowFn, log: slog.Default()}
 }
 
-// Handle processes one raw Telegram update end to end.
-func (d *Dispatcher) Handle(ctx context.Context, chatID, userID int64, firstName, lastName string, msg router.Message) {
+// perMessageTimeout bounds the total processing time of one update.
+const perMessageTimeout = 90 * time.Second
+
+// Handle processes one raw Telegram update end to end. It never panics up to
+// the caller (one bad message must not kill the poll loop) and always logs
+// update_id/user_id/intent/latency_ms/outcome for observability.
+func (d *Dispatcher) Handle(ctx context.Context, updateID, chatID, userID int64, firstName, lastName string, msg router.Message) {
+	start := time.Now()
+	outcome := "panic"
+	defer func() {
+		if r := recover(); r != nil {
+			d.log.Error("handler panic recovered", "update_id", updateID, "user_id", userID, "panic", r,
+				"stack", string(debugStack()))
+		}
+		d.log.Info("message processed",
+			"update_id", updateID,
+			"user_id", userID,
+			"intent", router.Classify(msg).Kind.String(),
+			"latency_ms", time.Since(start).Milliseconds(),
+			"outcome", outcome)
+	}()
+
+	ctx, cancel := context.WithTimeout(ctx, perMessageTimeout)
+	defer cancel()
+
+	outcome = d.handle(ctx, updateID, chatID, userID, firstName, lastName, msg)
+}
+
+func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64, firstName, lastName string, msg router.Message) (outcome string) {
+	outcome = "error"
 	user, ok, err := d.auth.Authorize(ctx, userID, firstName, lastName)
 	if err != nil {
 		d.log.Error("authorize failed", "user_id", userID, "err", err)
-		return
+		return "auth_error"
 	}
 	if !ok {
 		return // dropped silently; never reply
@@ -74,19 +115,45 @@ func (d *Dispatcher) Handle(ctx context.Context, chatID, userID int64, firstName
 	intent := router.Classify(msg)
 	switch intent.Kind {
 	case router.IntentDelete:
-		d.handleDelete(ctx, chatID, user, intent.DeleteID, intent.Text)
+		outcome = d.handleDelete(ctx, chatID, user, intent.DeleteID, intent.Text)
 	case router.IntentRecap:
-		d.handleRecap(ctx, chatID, user, intent.Text)
+		outcome = d.handleRecap(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
-		d.reply(ctx, chatID, "Photo receipts are coming in the next session.")
+		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:
-		d.reply(ctx, chatID, "PDF statements are coming in the next session.")
+		outcome = d.handlePDF(ctx, chatID, user, msg)
+	case router.IntentHelp:
+		d.reply(ctx, chatID, helpText)
+		outcome = "help"
 	default:
-		d.handleEntry(ctx, chatID, user, intent.Text)
+		outcome = d.handleEntry(ctx, chatID, user, intent.Text)
 	}
+	return outcome
 }
 
-func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.User, text string) {
+// helpText is the compact bilingual usage card sent for /start and /help.
+const helpText = `🤖 Financio — expense tracking via Telegram
+
+📝 Log / Catat:
+• 10rm nasi lemak
+• nasi lemak 10rm yesterday
+• gaji 6500 (income)
+
+🗑️ Delete / Hapus:
+• hapus 123
+• delete 123
+
+📊 Recap / Rekap:
+• recap nov 2025
+• recap this week meals
+• rekap bulan ini
+
+🧾 Receipts / Struk:
+• send a receipt photo
+• kirim foto struk atau PDF statement`
+
+func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.User, text string) (outcome string) {
+	outcome = "error"
 	lang := detectLanguage(text)
 
 	categories, currencies, err := d.loadRefData(ctx)
@@ -113,10 +180,10 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 
 	if !parsed.IsTransaction {
 		d.reply(ctx, chatID, hint(lang))
-		return
+		return "not_transaction"
 	}
 
-	txn, err := d.validateAndStore(ctx, user, parsed, categories, currencies, now, raw)
+	txn, err := d.insertParsed(ctx, user, parsed, categories, currencies, now, "text", raw)
 	if err != nil {
 		d.log.Warn("validation failed", "err", err, "raw", text)
 		d.reply(ctx, chatID, parseFailHint)
@@ -124,6 +191,117 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 	}
 
 	d.reply(ctx, chatID, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang))
+	return "saved"
+}
+
+// handlePhoto: download the photo, parse it with the vision model, insert via
+// the shared entry path (source="photo").
+func (d *Dispatcher) handlePhoto(ctx context.Context, chatID int64, user store.User, msg router.Message, source string) (outcome string) {
+	outcome = "error"
+	lang := detectLanguage(msg.Text)
+
+	image, err := d.down.Download(ctx, msg.PhotoFileID)
+	if err != nil {
+		d.log.Error("photo download failed", "err", err, "file_id", msg.PhotoFileID)
+		d.reply(ctx, chatID, downloadFailHint(lang))
+		return
+	}
+
+	entries, categories, currencies, err := d.parseReceipt(ctx, func(in ai.ReceiptInput) ([]ai.ParsedEntry, error) {
+		return d.ai.ParsePhotoReceipt(ctx, image, in)
+	})
+	if err != nil {
+		d.log.Error("parse photo receipt failed", "err", err)
+		d.reply(ctx, chatID, parseFailHint)
+		return
+	}
+	return d.insertReceiptEntries(ctx, chatID, user, entries, categories, currencies, source, msg.Text, lang)
+}
+
+// handlePDF: download the document, extract text (30KB guard), parse with the
+// statement rules, insert via the shared entry path (source="pdf").
+func (d *Dispatcher) handlePDF(ctx context.Context, chatID int64, user store.User, msg router.Message) (outcome string) {
+	outcome = "error"
+	lang := detectLanguage(msg.Text)
+
+	data, err := d.down.Download(ctx, msg.DocumentFileID)
+	if err != nil {
+		d.log.Error("pdf download failed", "err", err, "file_id", msg.DocumentFileID)
+		d.reply(ctx, chatID, downloadFailHint(lang))
+		return
+	}
+
+	text, err := receipt.ExtractPDFText(data)
+	if err != nil || !receipt.TextOK(text) {
+		d.log.Warn("pdf text unreadable", "err", err, "bytes", len(text))
+		d.reply(ctx, chatID, receipt.UnreadablePDFMessage(lang))
+		return "pdf_unreadable"
+	}
+
+	entries, categories, currencies, err := d.parseReceipt(ctx, func(in ai.ReceiptInput) ([]ai.ParsedEntry, error) {
+		return d.ai.ParseTextReceipt(ctx, text, in)
+	})
+	if err != nil {
+		d.log.Error("parse pdf receipt failed", "err", err)
+		d.reply(ctx, chatID, parseFailHint)
+		return
+	}
+	return d.insertReceiptEntries(ctx, chatID, user, entries, categories, currencies, "pdf", msg.DocumentName, lang)
+}
+
+func (d *Dispatcher) parseReceipt(ctx context.Context, call func(ai.ReceiptInput) ([]ai.ParsedEntry, error)) ([]ai.ParsedEntry, []string, []store.Currency, error) {
+	categories, currencies, err := d.loadRefData(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	now := d.nowFn().In(d.tz)
+	entries, err := call(ai.ReceiptInput{
+		CurrentDate:     now.Format("2006-01-02"),
+		Categories:      categories,
+		Currencies:      currencyCodes(currencies),
+		DefaultCurrency: d.defCur,
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return entries, categories, currencies, nil
+}
+
+// insertReceiptEntries runs the shared validation + insert path for every
+// parsed transaction. One insert -> the normal confirmation; >1 -> one compact
+// aggregate reply. Invalid rows are skipped (logged), not fatal.
+func (d *Dispatcher) insertReceiptEntries(ctx context.Context, chatID int64, user store.User, entries []ai.ParsedEntry, categories []string, currencies []store.Currency, source, raw, lang string) (outcome string) {
+	now := d.nowFn().In(d.tz)
+	var txns []store.Transaction
+	for _, e := range entries {
+		if !e.IsTransaction {
+			continue
+		}
+		txn, err := d.insertParsed(ctx, user, e, categories, currencies, now, source, raw)
+		if err != nil {
+			d.log.Warn("receipt row validation failed", "err", err, "item", e.Item, "source", source)
+			continue
+		}
+		txns = append(txns, txn)
+	}
+
+	switch {
+	case len(txns) == 0:
+		d.reply(ctx, chatID, hint(lang))
+		return "no_transaction"
+	case len(txns) == 1:
+		d.reply(ctx, chatID, formatConfirmation(txns[0], currencies, firstName(user.DisplayName), lang))
+	default:
+		d.reply(ctx, chatID, receipt.FormatMulti(txns, currencies))
+	}
+	return "saved"
+}
+
+func downloadFailHint(lang string) string {
+	if lang == "ID" {
+		return "File tidak bisa diunduh. Coba kirim ulang."
+	}
+	return "Couldn't download that file. Please send it again."
 }
 
 const parseFailHint = "Could not parse that — try e.g. '10rm nasi lemak' / 'gaji 5000 bulan ini'"
@@ -131,13 +309,13 @@ const parseFailHint = "Could not parse that — try e.g. '10rm nasi lemak' / 'ga
 // handleDelete deletes by id scoped to the requesting user. Not-found and
 // not-owned are indistinguishable in the reply ("Record not found!") so we
 // never reveal whether an id exists for someone else.
-func (d *Dispatcher) handleDelete(ctx context.Context, chatID int64, user store.User, id int64, text string) {
+func (d *Dispatcher) handleDelete(ctx context.Context, chatID int64, user store.User, id int64, text string) (outcome string) {
 	lang := detectLanguage(text)
 	txn, ok, err := d.store.DeleteTransactionByID(ctx, id, user.ID)
 	if err != nil {
 		d.log.Error("delete failed", "err", err, "id", id)
 		d.reply(ctx, chatID, recapFailHint(lang))
-		return
+		return "error"
 	}
 	if !ok {
 		if lang == "ID" {
@@ -145,18 +323,20 @@ func (d *Dispatcher) handleDelete(ctx context.Context, chatID int64, user store.
 		} else {
 			d.reply(ctx, chatID, "Record not found!")
 		}
-		return
+		return "not_found"
 	}
 	if lang == "ID" {
 		d.reply(ctx, chatID, fmt.Sprintf("🗑️ item dengan id %d sudah dihapus\n🛍️: %s", id, txn.Item))
 	} else {
 		d.reply(ctx, chatID, fmt.Sprintf("🗑️ item deleted for id: %d\n🛍️: %s", id, txn.Item))
 	}
+	return "deleted"
 }
 
 // handleRecap: the AI returns a structured filter only; Go builds the
 // parameterized query. No model output ever reaches SQL as text.
-func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.User, text string) {
+func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.User, text string) (outcome string) {
+	outcome = "error"
 	categories, err := d.store.ListActiveCategories(ctx)
 	if err != nil {
 		d.log.Error("load categories failed", "err", err)
@@ -204,7 +384,7 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 		} else {
 			d.reply(ctx, chatID, "No transactions in this period.")
 		}
-		return
+		return "empty"
 	}
 
 	currencies, err := d.store.ListActiveCurrencies(ctx)
@@ -216,7 +396,9 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0)
 	if err := d.tg.SendMessages(chatID, parts); err != nil {
 		d.log.Error("send recap failed", "err", err)
+		return
 	}
+	return "recap"
 }
 
 func recapFailHint(lang string) string {
@@ -266,7 +448,9 @@ func firstName(displayName string) string {
 	return displayName
 }
 
-func (d *Dispatcher) validateAndStore(ctx context.Context, user store.User, p ai.ParsedEntry, categories []string, currencies []store.Currency, now time.Time, raw string) (store.Transaction, error) {
+// insertParsed is the ONE validation + insert path shared by text, photo, and
+// PDF sources (BRIEF: single insert path for all sources).
+func (d *Dispatcher) insertParsed(ctx context.Context, user store.User, p ai.ParsedEntry, categories []string, currencies []store.Currency, now time.Time, source, raw string) (store.Transaction, error) {
 	if p.Amount <= 0 {
 		return store.Transaction{}, fmt.Errorf("amount must be > 0, got %v", p.Amount)
 	}
@@ -306,7 +490,7 @@ func (d *Dispatcher) validateAndStore(ctx context.Context, user store.User, p ai
 		Direction:    p.Direction,
 		EntryDate:    entryDate,
 		Description:  desc,
-		Source:       "text",
+		Source:       source,
 		RawMessage:   raw,
 	})
 }
@@ -399,4 +583,8 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func stackBytes() []byte {
+	return debug.Stack()
 }

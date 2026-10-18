@@ -25,19 +25,43 @@ status.md first, then survey the repo (sessions 1-4 delivered a fully working bo
      readOnlyRootFilesystem true, runAsNonRoot true.
    - No Service, no Ingress — the bot is outbound-only (long polling); /healthz is for
      the kubelet only.
-3. `deploy/README.md`: two paths to get the image onto TrueNAS k3s — (a) push to ghcr
-   and reference it, (b) `docker save financio:2.0.0 | k3s ctr images import -` on the
-   host; then `kubectl apply -f deploy/application-deploy.yaml`; how to check logs and
-   that schema_migrations ran on startup.
-4. Makefile: `image` target tagging consistently (financio:2.0.0).
-5. Final sweep: `go vet ./...`, `go test ./... -race`, `gofmt -l` empty, `go build`
-   clean; README run section current; status.md session 5 -> Done.
+   - Real values are substituted only at apply time (e.g. `kubectl -n financio create
+     secret generic financio-secrets --from-literal=TELEGRAM_BOT_TOKEN=...`) or via an
+     untracked `deploy/application-deploy.local.yaml` (gitignored). A manifest with real
+     secrets filled in must never be committed — per BRIEF "Secrets policy" and the
+     session-1 pre-commit hook.
+3. `deploy/truenas-custom-app.yaml`: a TrueNAS SCALE **Custom App** definition
+   (docker-compose style, for Electric Eel and later) — this is the user's preferred
+   deploy path:
+   - `services.financio`: image `ghcr.io/rifi331/financio:2.0.0` (pulled from GitHub
+     Container Registry), `restart: unless-stopped`, single service only (long polling —
+     never scale past 1).
+   - Environment entries for every var in BRIEF "Config" with `<PLACEHOLDER>` values the
+     user fills in the TrueNAS UI — never commit filled values (BRIEF "Secrets policy").
+   - Healthcheck hitting `http://localhost:7777/healthz` on the container port.
+   - A header comment with the paste-in location: TrueNAS UI → Apps → Discover Apps →
+     Install via YAML.
+4. `deploy/README.md`: three deploy paths — (a) TrueNAS Custom App via
+   `truenas-custom-app.yaml` with the ghcr image (preferred), (b) kubectl apply of the
+   k3s manifest, (c) `docker save financio:2.0.0 | k3s ctr images import -` on the host
+   for airgapped clusters; plus how to push the image to ghcr (docker login ghcr.io with
+   a GitHub PAT, buildx, push) and how to check logs and that schema_migrations ran.
+5. Makefile: `image` target tagging consistently (financio:2.0.0).
+6. Final sweep: `go vet ./...`, `go test ./... -race`, `gofmt -l` empty, `go build`
+   clean; README run section current. Update status.md twice: session 5 -> Done, and
+   refresh the "Deployment TODO — TrueNAS custom app" checklist there so image tag,
+   file names, and steps match what was actually built (the user reads and works
+   through that checklist manually).
 
 Acceptance criteria:
 - Image builds and is < 30MB (document the `docker images` size check in deploy/README).
 - Container starts standalone and fails fast with clear logs when required env is
   missing.
 - Manifest applies cleanly to a client dry-run (`kubectl apply --dry-run=client`).
+- `docker compose -f deploy/truenas-custom-app.yaml config` validates (with placeholder
+  values), references the ghcr image, and contains no real secrets.
+- status.md shows session 5 Done and an up-to-date "Deployment TODO — TrueNAS custom
+  app" checklist.
 - Commit tagged v2.0.0.
 ````
 

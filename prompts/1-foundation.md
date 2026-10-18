@@ -20,9 +20,15 @@ Part A — bootstrap:
 4. `main.go`: init slog (JSON handler, level from LOG_LEVEL, default info), load config,
    log the redacted config, start a `net/http` server on HEALTH_PORT serving `/healthz`
    -> 200 "ok", shut down gracefully on SIGINT/SIGTERM. No DB or Telegram yet.
-5. `.gitignore` (binary, .env, /dist), `Makefile` with targets: `build`, `test`, `lint`,
-   `run`. `git init` + initial commit.
-6. Part A is stdlib only — no frameworks, no dependencies yet.
+5. `.gitignore` (binary, .env, *.env, /dist, deploy/*.local.yaml), `Makefile` with
+   targets: `build`, `test`, `lint`, `run`, `check-secrets`. `git init` + initial commit.
+6. Secret hygiene, enforcing docs/BRIEF.md "Secrets policy": commit a `.githooks/pre-commit`
+   hook that scans staged content for credential patterns and blocks the commit on a
+   match — Telegram bot token `\b\d{8,10}:[A-Za-z0-9_-]{35}\b`, OpenAI key
+   `sk-[A-Za-z0-9_-]{20,}`, DSN with password `postgres(ql)?://\S+:\S+@`. Activate it via
+   `git config core.hooksPath .githooks` and document that step in README.md. The
+   Makefile `check-secrets` target runs the same scan over the working tree.
+7. Part A is stdlib only — no frameworks, no dependencies yet.
 
 Part B — database:
 
@@ -62,6 +68,8 @@ Acceptance criteria:
 - `go build ./...`, `go vet ./...`, `go test ./...` pass (skips allowed without DSN).
 - `make run` starts, logs config safely, serves /healthz, exits cleanly on Ctrl+C.
 - A unit test asserts config fails fast when TELEGRAM_BOT_TOKEN is unset.
+- The secret scanner demonstrably blocks: a test feeds it content containing a fake
+  Telegram-format token and asserts detection (use obviously fake values).
 - With a real DSN: migrations are idempotent (run twice -> no error), seeds present.
 - No SQL string concatenation anywhere (grep for "Sprintf" near SQL must fail).
 - Commit; update status.md (session 1 -> Done, add date and notes).

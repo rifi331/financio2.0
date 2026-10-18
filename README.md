@@ -1,35 +1,63 @@
-# Financio 2.0 — Build Prompt Series
+# Financio 2.0
 
-Phased, copy-paste prompts to build Financio 2.0: a single lightweight Go binary running a
-private Telegram expense/income tracker backed by Postgres and GPT-4o-mini, deployed to the
-k3s cluster on the TrueNAS server. Replaces the n8n "Financio postgres" automation in
-`G:\projects\financio\`.
+A private Telegram expense/income tracker: one lightweight Go binary, long-polling
+Telegram (no ingress), Postgres for storage, GPT-4o-mini for structured parsing.
+Replaces the n8n "Financio postgres" automation.
 
-## File map
+## Features
 
-| File | Purpose |
-|---|---|
-| `docs/BRIEF.md` | Shared context every prompt reads: stack, schema, config, runtime contract |
-| `prompts/1-foundation.md` | Session 1 — bootstrap, config, DB schema, migrations, store |
-| `prompts/2-bot-and-entry.md` | Session 2 — Telegram polling, allowlist auth, router, AI text-entry flow |
-| `prompts/3-delete-and-recap.md` | Session 3 — delete + recap flows |
-| `prompts/4-receipts-and-hardening.md` | Session 4 — photo/PDF receipts, /help, resilience |
-| `prompts/5-deploy.md` | Session 5 — Docker image + TrueNAS k3s manifest |
-| `prompts/6-optional-import-v1.md` | Optional — one-off import of 1.0 data |
-| `verification.md` | End-to-end checklist to run after session 5 |
-| `status.md` | Progress tracker — update after every session |
+- **Text entry**: `10rm nasi lemak`, `nasi lemak 10rm yesterday`, `gaji 6500`
+  (AI-detected income) — insert via one shared, parameterized path.
+- **Delete**: `hapus 123` / `delete 123` (ownership-scoped, no leakage).
+- **Recap**: `recap nov 2025`, `recap this week meals`, `rekap bulan ini` —
+  the AI returns a structured filter only; Go builds the SQL.
+- **Receipts**: send a **photo** of a receipt (vision parsing; one transaction
+  with line-item details) or a **bank-statement PDF** (text extraction with a
+  30KB guard; spending rows kept, wallet top-up "Receive" rows skipped).
+- **Help**: `/start`, `/help` — bilingual usage card.
+- **Hardened**: panic in any handler is recovered and logged; 90s per-message
+  timeout; at most 4 messages processed concurrently with per-chat ordering;
+  Postgres outages degrade to error replies (poll loop survives); Telegram 409
+  (second poller) exits loudly — single replica only.
 
-## How to use
+## Configuration (env)
 
-1. **One prompt file = one fresh AI session.** Open a new agent session (e.g. ZCode) with
-   `financio2.0/` as the working directory — this folder is the Go repo root.
-2. Paste the entire fenced block from the prompt file into the session.
-3. Let the session run to completion: build + tests green, one or more commits made.
-4. Update `status.md` (mark the session Done, add date and notes).
-5. Repeat with the next prompt file. Run `verification.md` after session 5.
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | ✅ | | from @BotFather |
+| `OPENAI_API_KEY` | ✅ | | |
+| `DATABASE_URL` | ✅ | | `postgres://user:pass@host:5432/financio` |
+| `ALLOWED_USERS` | ✅ | | comma-separated display names, e.g. `Rifi Anggriawan` |
+| `OPENAI_MODEL` | | `gpt-4o-mini` | |
+| `DISPLAY_TZ` | | `Asia/Kuala_Lumpur` | |
+| `DEFAULT_CURRENCY` | | `MYR` | seeded: MYR, IDR, USD, SGD |
+| `HEALTH_PORT` | | `7777` | `/healthz` |
+| `LOG_LEVEL` | | `info` | JSON logs via slog |
 
-Sessions must be run in order 1→5; prompt 6 is optional and can run any time after 5.
+Secrets enter at runtime only — never committed (see `docs/BRIEF.md`).
 
-> ⚠️ Security note: the old `G:\projects\financio.yaml` contains plaintext, live-looking
-> TELEGRAM_BOT_TOKEN and OPENAI_API_KEY values. **Rotate both before deploying 2.0.**
-> The prompts in this folder only ever use placeholders.
+## Run locally
+
+```sh
+make build          # binary in dist/financio, build info via -ldflags
+make test           # go test ./...
+make lint           # go vet ./...
+
+# with a local Postgres and an untracked .env (gitignored):
+export $(grep -v '^#' .env | xargs) && make run
+curl localhost:7777/healthz
+```
+
+Migrations are embedded and applied automatically at startup. Store tests are
+gated behind `FINANCIO_TEST_DSN`.
+
+## Repository layout
+
+`cmd/financio` (wiring) · `internal/config` · `internal/store` (pgx + migrations)
+· `internal/telegram` (long polling, sends, downloads) · `internal/router`
+(intent classify) · `internal/auth` (allowlist) · `internal/ai` (chat
+completions + structured outputs) · `internal/bot` (dispatcher, worker pool)
+· `internal/recap` (formatter) · `internal/receipt` (PDF extraction + helpers).
+
+Build-prompt series lives in `prompts/`; progress in `status.md`; scope and
+schema in `docs/BRIEF.md`.

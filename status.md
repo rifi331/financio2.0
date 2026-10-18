@@ -10,10 +10,26 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
 | 1 | `prompts/1-foundation.md` | Repo bootstrap, config, DB schema, migrations, store | Done | 2026-10-18 | All items done. Placeholder-package layout in place for sessions 2–4. |
 | 2 | `prompts/2-bot-and-entry.md` | Telegram polling, allowlist auth, router, AI text-entry flow | Done | 2026-10-18 | All items done. Dispatcher lives in new `internal/bot` package. |
 | 3 | `prompts/3-delete-and-recap.md` | Delete + recap flows | Done | 2026-10-18 | All items done. |
-| 4 | `prompts/4-receipts-and-hardening.md` | Photo/PDF receipts, /start & /help, resilience | Pending | | |
-| 5 | `prompts/5-deploy.md` | Docker image, TrueNAS k3s manifest, final sweep | Pending | | |
+| 4 | `prompts/4-receipts-and-hardening.md` | Photo/PDF receipts, /start & /help, resilience | Done | 2026-10-18 | All items done. See session log below. |
+| 5 | `prompts/5-deploy.md` | Docker image, TrueNAS custom-app YAML + k3s manifest, final sweep | Pending | | |
 | 6 | `prompts/6-optional-import-v1.md` | Optional: import 1.0 n8n-era data | Pending | | |
 | — | `verification.md` | End-to-end manual verification checklist | Pending | | |
+
+## Deployment TODO — TrueNAS custom app (manual steps, after session 5)
+
+My deploy path of choice: TrueNAS SCALE **Custom App** (Apps → Discover Apps → Install via
+YAML) using `deploy/truenas-custom-app.yaml`, with the image pulled from GitHub Container
+Registry (ghcr.io). Session 5 refreshes this checklist to match the final artifacts.
+
+- [ ] Rotate the Telegram bot token and OpenAI key (both exposed in the old `financio.yaml`)
+- [ ] Prepare the Postgres database (TrueNAS app) and note the `DATABASE_URL`
+- [ ] Build + push the image to ghcr: `make image` → `docker push ghcr.io/rifi331/financio:2.0.0`
+- [ ] TrueNAS UI → Apps → Discover Apps → Install via YAML → paste `deploy/truenas-custom-app.yaml`
+- [ ] Fill the env placeholders in the UI: `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`,
+      `DATABASE_URL`, `ALLOWED_USERS` (never commit filled values)
+- [ ] Start the app → confirm Running, logs show migrations applied + polling started
+- [ ] Send `/start` to the bot from an allowlisted Telegram account
+- [ ] Work through `verification.md` end to end
 
 ## Session log
 
@@ -90,3 +106,33 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
   split with headers/limits, empty); ai filter-parse fixtures (nov 2025, rekap bulan ini
   makan, recap today, garbage, malformed); a guard test that the recap package never
   imports the pgx driver or builds SQL strings.
+
+### Session 4 — 2026-10-18
+- Receipts: `ai.ParsePhotoReceipt` (vision message, base64 data-URL image, json_schema
+  wrapping session-2's entry schema as `{transactions:[...]}`) and `ai.ParseTextReceipt`
+  (PDF text, 1.0 statement rules: keep Duitnow QR/Payment/Card Payment/RFID rows, skip
+  receive-type wallet top-ups) share one internal parser (`parseReceipt`).
+- `internal/receipt`: `ExtractPDFText` (ledongthuc/pdf), 30KB text guard, localized
+  "PDF could not be read" reply, compact multi-transaction confirmation
+  ("✅ N transactions saved" + per-row lines + per-currency total). Flow handlers
+  live in `bot.Dispatcher` (deviation from "flows in internal/receipt") so both media
+  flows reuse the single `insertParsed` validation+insert path with source
+  "photo"/"pdf" — the BRIEF's one-insert-path rule won.
+- Telegram: `Download` (getFile + download, 10MB cap); polling rewritten to a manual
+  `GetUpdates` loop (library's GetUpdatesChan panics on error): 409 Conflict returns
+  `ErrConflict` -> main exits(1) loudly (single replica); other getUpdates errors
+  back off exponentially (1s..30s) and keep polling. Postgres outages surface as
+  per-message error replies; the loop survives.
+- Hardening/UX: `/start` + `/help` bilingual card (router IntentHelp); panic recovery
+  in `Dispatcher.Handle` (logged with stack, bot keeps answering); 90s per-message
+  timeout; `bot.Pool` = max 4 concurrent messages with strict per-chat ordering
+  (serial worker per chat id + global semaphore); per-message slog fields
+  (update_id, user_id, intent, latency_ms, outcome); startup log line with
+  version/commit/date injected via -ldflags (Makefile build updated).
+- Tests: photo flow (multi-row aggregate reply exact, per-row dates, source/raw),
+  single-receipt confirmation, PDF 40KB guard + localized unreadable (EN/ID), small
+  valid PDF end-to-end (via new `internal/receipt/testpdf` minimal PDF builder),
+  download failure reply, help text, panic recovery keeps answering, pool ordering;
+  router /start|/help classification; ai vision request shape + prompt-rule fixtures;
+  receipt formatter incl. multi-currency totals.
+- Not manually verified against a real bot token / real OpenAI calls (none provided).

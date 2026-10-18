@@ -4,10 +4,10 @@ import "testing"
 
 func TestClassify(t *testing.T) {
 	tests := []struct {
-		name    string
-		msg     Message
-		want    IntentKind
-		wantID  int64
+		name   string
+		msg    Message
+		want   IntentKind
+		wantID int64
 	}{
 		{"delete upper", Message{Text: "Delete 123"}, IntentDelete, 123},
 		{"hapus hash", Message{Text: "hapus #7"}, IntentDelete, 7},
@@ -33,5 +33,21 @@ func TestClassify(t *testing.T) {
 				t.Errorf("DeleteID = %d, want %d", got.DeleteID, tt.wantID)
 			}
 		})
+	}
+}
+
+func TestHelpCommands(t *testing.T) {
+	for _, txt := range []string{"/start", "/help", "/help@financio_bot", " /start "} {
+		if got := Classify(Message{Text: txt}); got.Kind != IntentHelp {
+			t.Errorf("Classify(%q) = %v, want IntentHelp", txt, got.Kind)
+		}
+	}
+	for _, txt := range []string{"help me log 10rm nasi lemak", "start running", "/start now"} {
+		if got := Classify(Message{Text: txt}); got.Kind == IntentHelp {
+			t.Errorf("Classify(%q) = IntentHelp, want another intent", txt)
+		}
+	}
+	if IntentHelp.String() != "help" || IntentPhoto.String() != "photo" {
+		t.Error("IntentKind.String labels wrong")
 	}
 }

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "prompts/3-delete-and-recap.md",
+                "file": "prompts/6-optional-import-v1.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "3-delete-and-recap"
+              "title": "6-optional-import-v1"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "prompts/3-delete-and-recap.md",
+                "file": "prompts/6-optional-import-v1.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "prompts/3-delete-and-recap.md",
+                "file": "prompts/6-optional-import-v1.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "prompts/3-delete-and-recap.md",
+                "file": "prompts/6-optional-import-v1.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,19 +190,22 @@
   },
   "active": "f4666ad77934c712",
   "lastOpenFiles": [
-    "status.md.tmp.28084.609aff232d3b",
-    "status.md.tmp.28084.1817be8d0048",
-    "internal/recap/recap_test.go.tmp.28084.9f302619cadd",
-    "internal/ai/recap_test.go.tmp.28084.9ad5e773128f",
-    "internal/ai/recap_test.go",
-    "internal/ai/recap_test.go.tmp.28084.fa9ae4139a76",
-    "internal/recap/recap_test.go.tmp.28084.38c9adc0a896",
-    "internal/recap/recap_test.go.tmp.28084.43a686db2a74",
-    "internal/recap/recap_test.go",
-    "internal/recap/recap_test.go.tmp.28084.92a733499f81",
-    "internal/bot/bot_delete_recap_test.go",
-    "prompts/2-bot-and-entry.md",
+    "dist/financio.exe",
+    "dist",
+    "README.md.tmp.28084.334f4a476bb2",
+    "Makefile.tmp.28084.7efc799cba6f",
+    "internal/receipt/sedCiFYf8",
+    "internal/receipt/testpdf/testpdf.go",
+    "internal/receipt/testpdf/testpdf.go.tmp.28084.b00cef543886",
+    "internal/receipt/testpdf",
+    "internal/bot/bot_receipt_test.go",
+    "internal/bot/bot_receipt_test.go.tmp.28084.a43b11018273",
+    "internal/ai/receipt_test.go",
+    "prompts/5-deploy.md",
+    "prompts/4-receipts-and-hardening.md",
     "status.md",
+    "prompts/3-delete-and-recap.md",
+    "prompts/2-bot-and-entry.md",
     "verification.md",
     "docs/BRIEF.md",
     "prompts/1-foundation.md"

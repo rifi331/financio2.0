@@ -15,10 +15,23 @@ import (
 	"time"
 )
 
-// Message is one chat message.
+// Message is one chat message. Content is either a string (plain text) or a
+// []ContentPart (multimodal, e.g. text + image for vision requests).
 type Message struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
+}
+
+// ContentPart is one part of a multimodal message content array.
+type ContentPart struct {
+	Type     string    `json:"type"` // "text" or "image_url"
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+// ImageURL carries a data: or https: URL of an image.
+type ImageURL struct {
+	URL string `json:"url"`
 }
 
 // ResponseFormat requests structured output.
@@ -36,9 +49,9 @@ type JSONSchemaDef struct {
 
 // ChatRequest is the chat-completions request body.
 type ChatRequest struct {
-	Model           string          `json:"model"`
-	Messages        []Message       `json:"messages"`
-	ResponseFormat  *ResponseFormat `json:"response_format,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []Message       `json:"messages"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 }
 
 // Client talks to the OpenAI-compatible chat-completions endpoint.
@@ -161,7 +174,11 @@ func (c *Client) chatOnce(ctx context.Context, body []byte) (content string, ret
 		"completion_tokens", cr.Usage.CompletionTokens,
 		"total_tokens", cr.Usage.TotalTokens)
 
-	return cr.Choices[0].Message.Content, false, nil
+	content, ok := cr.Choices[0].Message.Content.(string)
+	if !ok {
+		return "", false, errors.New("openai: non-string message content")
+	}
+	return content, false, nil
 }
 
 func req2model(body []byte) string {

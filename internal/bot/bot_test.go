@@ -110,6 +110,11 @@ type fakeAI struct {
 
 	recapResponses map[string]ai.RecapFilter
 	recapRequests  []string
+
+	photoResponse []ai.ParsedEntry
+	photoErr      error
+	textResponse  []ai.ParsedEntry
+	textErr       error
 }
 
 func (f *fakeAI) ParseEntry(_ context.Context, in ai.EntryInput) (ai.ParsedEntry, error) {
@@ -118,6 +123,20 @@ func (f *fakeAI) ParseEntry(_ context.Context, in ai.EntryInput) (ai.ParsedEntry
 		return p, nil
 	}
 	return ai.ParsedEntry{}, fmt.Errorf("no canned response for %q", in.Message)
+}
+
+func (f *fakeAI) ParsePhotoReceipt(_ context.Context, _ []byte, _ ai.ReceiptInput) ([]ai.ParsedEntry, error) {
+	if f.photoErr != nil {
+		return nil, f.photoErr
+	}
+	return f.photoResponse, nil
+}
+
+func (f *fakeAI) ParseTextReceipt(_ context.Context, _ string, _ ai.ReceiptInput) ([]ai.ParsedEntry, error) {
+	if f.textErr != nil {
+		return nil, f.textErr
+	}
+	return f.textResponse, nil
 }
 
 func (f *fakeAI) ParseRecapFilter(_ context.Context, text string, _ time.Time, _ []string) (ai.RecapFilter, error) {
@@ -146,10 +165,24 @@ func (f *fakeSender) SendMessages(_ int64, parts []string) error {
 
 var fixedNow = time.Date(2026, 10, 18, 15, 0, 0, 0, time.UTC)
 
+type fakeDownloader struct {
+	data    []byte
+	err     error
+	fileIDs []string
+}
+
+func (f *fakeDownloader) Download(_ context.Context, fileID string) ([]byte, error) {
+	f.fileIDs = append(f.fileIDs, fileID)
+	return f.data, f.err
+}
+
 func newTestDispatcher(fs *fakeStore, fai *fakeAI, send *fakeSender) *Dispatcher {
 	authorizer := auth.New(fs, []string{"Rifi Anggriawan"})
-	return NewDispatcher(fs, authorizer, fai, send, time.UTC, "MYR", func() time.Time { return fixedNow })
+	return NewDispatcher(fs, authorizer, fai, send, fdown, time.UTC, "MYR", func() time.Time { return fixedNow })
 }
+
+// fdown is the package-default fake downloader; receipt tests may swap it.
+var fdown = &fakeDownloader{data: []byte("jpeg-bytes")}
 
 // --- flow tests ---
 
@@ -207,7 +240,7 @@ func TestEntryFlow(t *testing.T) {
 	d := newTestDispatcher(fs, fai, send)
 
 	for i, tt := range tests {
-		d.Handle(context.Background(), 55, 55, "Rifi", "Anggriawan", router.Message{Text: tt.text})
+		d.Handle(context.Background(), 1, 55, 55, "Rifi", "Anggriawan", router.Message{Text: tt.text})
 
 		reply := send.messages[len(send.messages)-1]
 		if reply != tt.wantReply {
@@ -234,7 +267,7 @@ func TestEntryFlow(t *testing.T) {
 func TestNoEntryParseForOtherIntents(t *testing.T) {
 	fs := &fakeStore{rows: []store.Transaction{{ID: 5, UserID: 55, Item: "x"}}}
 	fai := &fakeAI{
-		responses:     map[string]ai.ParsedEntry{},
+		responses:      map[string]ai.ParsedEntry{},
 		recapResponses: map[string]ai.RecapFilter{},
 	}
 	send := &fakeSender{}
@@ -243,7 +276,7 @@ func TestNoEntryParseForOtherIntents(t *testing.T) {
 	for _, m := range []router.Message{
 		{Text: "delete 5"}, {Text: "photo", HasPhoto: true}, {DocumentName: "s.pdf"},
 	} {
-		d.Handle(context.Background(), 55, 55, "Rifi", "Anggriawan", m)
+		d.Handle(context.Background(), 1, 55, 55, "Rifi", "Anggriawan", m)
 	}
 	if len(fai.requests) != 0 {
 		t.Errorf("ParseEntry called %d times for non-entry intents, want 0", len(fai.requests))
@@ -269,7 +302,7 @@ func TestValidationFailures(t *testing.T) {
 		fai := &fakeAI{responses: map[string]ai.ParsedEntry{tt.text: tt.ai}}
 		send := &fakeSender{}
 		d := newTestDispatcher(fs, fai, send)
-		d.Handle(context.Background(), 55, 55, "Rifi", "Anggriawan", router.Message{Text: tt.text})
+		d.Handle(context.Background(), 1, 55, 55, "Rifi", "Anggriawan", router.Message{Text: tt.text})
 
 		if len(fs.inserted) != 0 {
 			t.Errorf("%s: row inserted despite validation failure", tt.name)
@@ -286,7 +319,7 @@ func TestUnauthorizedDropped(t *testing.T) {
 	send := &fakeSender{}
 	d := newTestDispatcher(fs, fai, send)
 
-	d.Handle(context.Background(), 55, 666, "Stranger", "Danger", router.Message{Text: "10rm nasi lemak"})
+	d.Handle(context.Background(), 1, 55, 666, "Stranger", "Danger", router.Message{Text: "10rm nasi lemak"})
 	if len(send.messages) != 0 {
 		t.Errorf("unauthorized sender got replies: %v", send.messages)
 	}
