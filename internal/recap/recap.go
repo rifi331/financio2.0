@@ -74,22 +74,46 @@ func groupDigits(whole string, dp int) string {
 }
 
 // Format builds one or more recap messages (each <= 4000 chars) from the
-// transactions, ordered by date then id. The total block is always in the
-// last message; a continuation re-emits the summary header.
-func Format(txns []store.Transaction, from, to time.Time, lang string, currencies []store.Currency, filterHadCategories bool) []string {
+// transactions. orderBy "category" groups them under category headings
+// (rows by date within each); anything else is the default date grouping.
+// The total block is always in the last message; a continuation re-emits
+// the summary header.
+func Format(txns []store.Transaction, from, to time.Time, lang string, currencies []store.Currency, filterHadCategories bool, orderBy string) []string {
 	header := summaryHeader(from, to, lang)
 
 	var lines []string
-	var lastDate string
-	for _, t := range txns {
-		d := t.EntryDate.Format("2006-01-02")
-		if d != lastDate {
-			lines = append(lines, "- 🗓️ "+d+":")
-			lastDate = d
+	if orderBy == "category" {
+		var catsSeen []string
+		catSet := map[string]bool{}
+		for _, t := range txns {
+			if !catSet[t.CategoryName] {
+				catSet[t.CategoryName] = true
+				catsSeen = append(catsSeen, t.CategoryName)
+			}
 		}
-		cur := findByCode(currencies, t.CurrencyCode)
-		lines = append(lines, fmt.Sprintf("  - 🆔: %d, 🛍️: %s, 💵: %s",
-			t.ID, t.Item, FormatAmount(cur, t.TotalAmount)))
+		for _, c := range catsSeen {
+			lines = append(lines, "- 🔠 "+c+":")
+			for _, t := range txns {
+				if t.CategoryName != c {
+					continue
+				}
+				cur := findByCode(currencies, t.CurrencyCode)
+				lines = append(lines, fmt.Sprintf("  - 🗓️ %s, 🆔: %d, 🛍️: %s, 💵: %s",
+					t.EntryDate.Format("2006-01-02"), t.ID, t.Item, FormatAmount(cur, t.TotalAmount)))
+			}
+		}
+	} else {
+		var lastDate string
+		for _, t := range txns {
+			d := t.EntryDate.Format("2006-01-02")
+			if d != lastDate {
+				lines = append(lines, "- 🗓️ "+d+":")
+				lastDate = d
+			}
+			cur := findByCode(currencies, t.CurrencyCode)
+			lines = append(lines, fmt.Sprintf("  - 🆔: %d, 🛍️: %s, 💵: %s",
+				t.ID, t.Item, FormatAmount(cur, t.TotalAmount)))
+		}
 	}
 
 	footer := totalLines(txns, currencies, lang, filterHadCategories)

@@ -30,7 +30,7 @@ func TestFormatGroupingAndMultiCurrencyTotals(t *testing.T) {
 		{ID: 3, UserID: 1, Item: "ayam", CategoryName: "Meals", CurrencyCode: "MYR", TotalAmount: "20.00", EntryDate: d(18)},
 	}
 
-	got := Format(txns, from, to, "EN", testCurrencies, false)
+	got := Format(txns, from, to, "EN", testCurrencies, false, "")
 
 	want := "📅 Summary 2026-10-01 - 2026-10-31\n" +
 		"- 🗓️ 2026-10-17:\n" +
@@ -50,7 +50,7 @@ func TestFormatSingleCategoryNoCategoryLine(t *testing.T) {
 	txns := []store.Transaction{
 		{ID: 1, UserID: 1, Item: "a", CategoryName: "Meals", CurrencyCode: "MYR", TotalAmount: "5.00", EntryDate: d(2)},
 	}
-	got := Format(txns, from, to, "EN", testCurrencies, false)
+	got := Format(txns, from, to, "EN", testCurrencies, false, "")
 	if strings.Contains(got[0], "by category") {
 		t.Errorf("category line should be omitted for single category:\n%s", got[0])
 	}
@@ -60,7 +60,7 @@ func TestFormatIndonesian(t *testing.T) {
 	txns := []store.Transaction{
 		{ID: 1, UserID: 1, Item: "bakso", CategoryName: "Meals", CurrencyCode: "IDR", TotalAmount: "50000", EntryDate: d(5)},
 	}
-	got := Format(txns, from, to, "ID", testCurrencies, false)
+	got := Format(txns, from, to, "ID", testCurrencies, false, "")
 	want := "📅 Ringkasan 2026-10-01 - 2026-10-31\n" +
 		"- 🗓️ 2026-10-05:\n" +
 		"  - 🆔: 1, 🛍️: bakso, 💵: Rp 50.000\n" +
@@ -71,7 +71,7 @@ func TestFormatIndonesian(t *testing.T) {
 }
 
 func TestFormatEmpty(t *testing.T) {
-	got := Format(nil, from, to, "EN", testCurrencies, false)
+	got := Format(nil, from, to, "EN", testCurrencies, false, "")
 	// Empty input normally short-circuits to the empty-period message in the
 	// dispatcher; the formatter still returns a parseable header-only chunk.
 	if len(got) == 0 || !strings.HasPrefix(got[0], "📅 Summary") {
@@ -91,7 +91,7 @@ func TestFormatSplitsAt4000WithHeaders(t *testing.T) {
 		})
 	}
 
-	got := Format(txns, from, to, "EN", testCurrencies, false)
+	got := Format(txns, from, to, "EN", testCurrencies, false, "")
 
 	if len(got) < 2 {
 		t.Fatalf("expected split into multiple messages, got %d", len(got))
@@ -167,4 +167,32 @@ func readPackageFiles() ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func TestFormatGroupByCategory(t *testing.T) {
+	txns := []store.Transaction{
+		{ID: 1, Item: "nasi lemak", CategoryName: "Meals", CurrencyCode: "MYR", TotalAmount: "10.50", EntryDate: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)},
+		{ID: 2, Item: "tol", CategoryName: "Public Transportation", CurrencyCode: "MYR", TotalAmount: "5.00", EntryDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
+		{ID: 3, Item: "bakso", CategoryName: "Meals", CurrencyCode: "MYR", TotalAmount: "12.00", EntryDate: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)},
+	}
+	from := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+
+	got := strings.Join(Format(txns, from, to, "EN", testCurrencies, false, "category"), "\n")
+	for _, want := range []string{
+		"- 🔠 Meals:",
+		"- 🔠 Public Transportation:",
+		"🗓️ 2026-10-05, 🆔: 3, 🛍️: bakso",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("grouped recap missing %q in:\n%s", want, got)
+		}
+	}
+	// Meals rows must sit under the Meals heading (heading index < row index).
+	mealsIdx := strings.Index(got, "- 🔠 Meals:")
+	pubIdx := strings.Index(got, "- 🔠 Public Transportation:")
+	baksoIdx := strings.Index(got, "bakso")
+	if !(mealsIdx < baksoIdx && (pubIdx == -1 || baksoIdx < pubIdx)) {
+		t.Errorf("grouping order wrong (meals=%d bakso=%d pub=%d)", mealsIdx, baksoIdx, pubIdx)
+	}
 }

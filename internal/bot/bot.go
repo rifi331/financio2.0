@@ -433,7 +433,7 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 		d.reply(ctx, chatID, recapFailHint(lang))
 		return
 	}
-	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0)
+	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0, filter.OrderBy)
 	if err := d.tg.SendMessages(chatID, parts); err != nil {
 		d.log.Error("send recap failed", "err", err)
 		return
