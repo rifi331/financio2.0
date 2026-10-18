@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/BRIEF.md",
+                "file": "prompts/3-delete-and-recap.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "BRIEF"
+              "title": "3-delete-and-recap"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "docs/BRIEF.md",
+                "file": "prompts/3-delete-and-recap.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "docs/BRIEF.md",
+                "file": "prompts/3-delete-and-recap.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "docs/BRIEF.md",
+                "file": "prompts/3-delete-and-recap.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,17 +190,21 @@
   },
   "active": "f4666ad77934c712",
   "lastOpenFiles": [
-    "status.md.tmp.28084.e4905d1ae087",
-    "status.md.tmp.28084.15752c523219",
-    "internal/bot/bot_test.go.tmp.28084.efa20ae1317d",
-    "internal/ai/client_test.go.tmp.28084.245502d0dd3b",
-    "internal/bot/bot.go.tmp.28084.a610baa07e09",
-    "internal/ai/client.go.tmp.28084.1f889a1dfb62",
-    "internal/bot/bot_test.go.tmp.28084.057994427569",
-    "internal/bot/bot_test.go.tmp.28084.3b1ad5756802",
-    "internal/bot/bot_test.go.tmp.28084.acdde0059570",
-    "internal/bot/bot_test.go.tmp.28084.2dc472257389",
-    "internal/bot/bot_test.go.tmp.28084.d2a25e506f69",
+    "status.md.tmp.28084.609aff232d3b",
+    "status.md.tmp.28084.1817be8d0048",
+    "internal/recap/recap_test.go.tmp.28084.9f302619cadd",
+    "internal/ai/recap_test.go.tmp.28084.9ad5e773128f",
+    "internal/ai/recap_test.go",
+    "internal/ai/recap_test.go.tmp.28084.fa9ae4139a76",
+    "internal/recap/recap_test.go.tmp.28084.38c9adc0a896",
+    "internal/recap/recap_test.go.tmp.28084.43a686db2a74",
+    "internal/recap/recap_test.go",
+    "internal/recap/recap_test.go.tmp.28084.92a733499f81",
+    "internal/bot/bot_delete_recap_test.go",
+    "prompts/2-bot-and-entry.md",
+    "status.md",
+    "verification.md",
+    "docs/BRIEF.md",
     "prompts/1-foundation.md"
   ]
 }

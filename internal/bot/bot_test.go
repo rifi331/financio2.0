@@ -16,9 +16,11 @@ import (
 
 type fakeStore struct {
 	inserted     []store.NewTransaction
+	rows         []store.Transaction
 	nextID       int64
 	unauthorized bool // when true, no user is known and EnsureUser records the attempt
 	ensured      []int64
+	lastFilter   *store.TxnFilter
 }
 
 func (f *fakeStore) ListActiveCategories(context.Context) ([]string, error) {
@@ -42,7 +44,51 @@ func (f *fakeStore) InsertTransaction(_ context.Context, txn store.NewTransactio
 		RawMessage: txn.RawMessage, CreatedAt: time.Now(),
 	}
 	f.inserted = append(f.inserted, txn)
+	f.rows = append(f.rows, t)
 	return t, nil
+}
+
+func (f *fakeStore) DeleteTransactionByID(_ context.Context, id, userID int64) (store.Transaction, bool, error) {
+	for i, t := range f.rows {
+		if t.ID == id {
+			if t.UserID != userID {
+				return store.Transaction{}, false, nil // not owned -> same as not found
+			}
+			f.rows = append(f.rows[:i], f.rows[i+1:]...)
+			return t, true, nil
+		}
+	}
+	return store.Transaction{}, false, nil
+}
+
+func (f *fakeStore) ListTransactions(_ context.Context, flt store.TxnFilter) ([]store.Transaction, error) {
+	f.lastFilter = &flt
+	var out []store.Transaction
+	for _, t := range f.rows {
+		if t.UserID != flt.UserID {
+			continue
+		}
+		if !flt.From.IsZero() && t.EntryDate.Before(flt.From) {
+			continue
+		}
+		if !flt.To.IsZero() && t.EntryDate.After(flt.To) {
+			continue
+		}
+		if len(flt.Categories) > 0 && !categoryIn(flt.Categories, t.CategoryName) {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+func categoryIn(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeStore) GetUserByTelegramID(_ context.Context, id int64) (store.User, bool, error) {
@@ -61,6 +107,9 @@ type fakeAI struct {
 	// responses maps raw user text to the parsed entry the "model" returns.
 	responses map[string]ai.ParsedEntry
 	requests  []ai.EntryInput
+
+	recapResponses map[string]ai.RecapFilter
+	recapRequests  []string
 }
 
 func (f *fakeAI) ParseEntry(_ context.Context, in ai.EntryInput) (ai.ParsedEntry, error) {
@@ -69,6 +118,14 @@ func (f *fakeAI) ParseEntry(_ context.Context, in ai.EntryInput) (ai.ParsedEntry
 		return p, nil
 	}
 	return ai.ParsedEntry{}, fmt.Errorf("no canned response for %q", in.Message)
+}
+
+func (f *fakeAI) ParseRecapFilter(_ context.Context, text string, _ time.Time, _ []string) (ai.RecapFilter, error) {
+	f.recapRequests = append(f.recapRequests, text)
+	if r, ok := f.recapResponses[text]; ok {
+		return r, nil
+	}
+	return ai.RecapFilter{}, fmt.Errorf("no canned recap response for %q", text)
 }
 
 type fakeSender struct {
@@ -174,23 +231,25 @@ func TestEntryFlow(t *testing.T) {
 	}
 }
 
-func TestNoAICallForOtherIntents(t *testing.T) {
-	fs := &fakeStore{}
-	fai := &fakeAI{responses: map[string]ai.ParsedEntry{}}
+func TestNoEntryParseForOtherIntents(t *testing.T) {
+	fs := &fakeStore{rows: []store.Transaction{{ID: 5, UserID: 55, Item: "x"}}}
+	fai := &fakeAI{
+		responses:     map[string]ai.ParsedEntry{},
+		recapResponses: map[string]ai.RecapFilter{},
+	}
 	send := &fakeSender{}
 	d := newTestDispatcher(fs, fai, send)
 
 	for _, m := range []router.Message{
-		{Text: "delete 5"}, {Text: "recap october"}, {Text: "hapus #3"},
-		{Text: "photo", HasPhoto: true}, {DocumentName: "s.pdf"},
+		{Text: "delete 5"}, {Text: "photo", HasPhoto: true}, {DocumentName: "s.pdf"},
 	} {
 		d.Handle(context.Background(), 55, 55, "Rifi", "Anggriawan", m)
 	}
 	if len(fai.requests) != 0 {
-		t.Errorf("AI called %d times for non-entry intents, want 0", len(fai.requests))
+		t.Errorf("ParseEntry called %d times for non-entry intents, want 0", len(fai.requests))
 	}
-	if len(fs.inserted) != 0 {
-		t.Errorf("inserted %d rows for non-entry intents", len(fs.inserted))
+	if len(fai.recapRequests) != 0 {
+		t.Errorf("ParseRecapFilter called %d times for non-recap intents, want 0", len(fai.recapRequests))
 	}
 }
 

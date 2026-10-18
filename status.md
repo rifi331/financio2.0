@@ -9,7 +9,7 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
 |---|---|---|---|---|---|
 | 1 | `prompts/1-foundation.md` | Repo bootstrap, config, DB schema, migrations, store | Done | 2026-10-18 | All items done. Placeholder-package layout in place for sessions 2–4. |
 | 2 | `prompts/2-bot-and-entry.md` | Telegram polling, allowlist auth, router, AI text-entry flow | Done | 2026-10-18 | All items done. Dispatcher lives in new `internal/bot` package. |
-| 3 | `prompts/3-delete-and-recap.md` | Delete + recap flows | Pending | | |
+| 3 | `prompts/3-delete-and-recap.md` | Delete + recap flows | Done | 2026-10-18 | All items done. |
 | 4 | `prompts/4-receipts-and-hardening.md` | Photo/PDF receipts, /start & /help, resilience | Pending | | |
 | 5 | `prompts/5-deploy.md` | Docker image, TrueNAS k3s manifest, final sweep | Pending | | |
 | 6 | `prompts/6-optional-import-v1.md` | Optional: import 1.0 n8n-era data | Pending | | |
@@ -65,3 +65,28 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
   replace. `bot.FormatAmount(cur, numericString)` handles IDR dot-thousands vs comma
   thousands for others.
 - Not manually verified against a real bot token (none provided).
+
+### Session 3 — 2026-10-18
+- Delete: `bot.handleDelete` — id comes from the router regexp (int64); replies exactly
+  `🗑️ item deleted for id: {id}\n🛍️: {item}` (EN) / `🗑️ item dengan id {id} sudah dihapus\n🛍️: {item}`
+  (ID); not-found and not-owned both reply `Record not found!` / `Catatan tidak ditemukan!`
+  (no owner leakage).
+- Recap: `ai.ParseRecapFilter` (json_schema strict, RecapFilter struct: is_recap_request,
+  date_from, date_to, categories[], language EN|ID; today date injected by Go; synonym
+  mapping instructed). Go validates: from<=to, both parse, range clamped to 5y
+  (`parseAndValidateRange`); categories intersected case-insensitively with DB list;
+  query via typed `store.TxnFilter` only — model output never becomes SQL text.
+- Formatter in `internal/recap`: date-grouped lines, per-currency totals
+  (`MYR 30.00 + IDR 150.000`), category breakdown only when filter had categories or
+  >1 category present, EN/ID headers, 4000-char split that never cuts a line and
+  re-emits the header; totals always in the last message. Empty period short-circuits
+  in the dispatcher with the localized empty message.
+- `FormatAmount` moved from bot to recap (bot re-exports it as a var so callers are
+  unchanged); recap also has `FormatAmountCode` for totals (ISO-code prefix).
+- Tests: delete outcomes (success EN/ID, not found, not-owned -> same generic reply and
+  row survives) with exact reply strings; recap flow (filter intersect, typed filter
+  assertion, empty, invalid range, is_recap_request=false); formatter (grouping,
+  multi-currency totals, single-category omits breakdown, ID localization, 120-row
+  split with headers/limits, empty); ai filter-parse fixtures (nov 2025, rekap bulan ini
+  makan, recap today, garbage, malformed); a guard test that the recap package never
+  imports the pgx driver or builds SQL strings.

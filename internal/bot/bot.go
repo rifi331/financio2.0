@@ -13,6 +13,7 @@ import (
 
 	"github.com/rifi331/financio/internal/ai"
 	"github.com/rifi331/financio/internal/auth"
+	"github.com/rifi331/financio/internal/recap"
 	"github.com/rifi331/financio/internal/router"
 	"github.com/rifi331/financio/internal/store"
 )
@@ -28,11 +29,14 @@ type TxStore interface {
 	ListActiveCategories(ctx context.Context) ([]string, error)
 	ListActiveCurrencies(ctx context.Context) ([]store.Currency, error)
 	InsertTransaction(ctx context.Context, txn store.NewTransaction) (store.Transaction, error)
+	DeleteTransactionByID(ctx context.Context, id, userID int64) (store.Transaction, bool, error)
+	ListTransactions(ctx context.Context, f store.TxnFilter) ([]store.Transaction, error)
 }
 
 // Parser is the AI extraction surface.
 type Parser interface {
 	ParseEntry(ctx context.Context, in ai.EntryInput) (ai.ParsedEntry, error)
+	ParseRecapFilter(ctx context.Context, text string, today time.Time, categories []string) (ai.RecapFilter, error)
 }
 
 // Dispatcher routes authorized messages to their intent handlers.
@@ -70,9 +74,9 @@ func (d *Dispatcher) Handle(ctx context.Context, chatID, userID int64, firstName
 	intent := router.Classify(msg)
 	switch intent.Kind {
 	case router.IntentDelete:
-		d.reply(ctx, chatID, "Delete is coming in the next session.")
+		d.handleDelete(ctx, chatID, user, intent.DeleteID, intent.Text)
 	case router.IntentRecap:
-		d.reply(ctx, chatID, "Recap is coming in the next session.")
+		d.handleRecap(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		d.reply(ctx, chatID, "Photo receipts are coming in the next session.")
 	case router.IntentPDF:
@@ -123,6 +127,137 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 }
 
 const parseFailHint = "Could not parse that — try e.g. '10rm nasi lemak' / 'gaji 5000 bulan ini'"
+
+// handleDelete deletes by id scoped to the requesting user. Not-found and
+// not-owned are indistinguishable in the reply ("Record not found!") so we
+// never reveal whether an id exists for someone else.
+func (d *Dispatcher) handleDelete(ctx context.Context, chatID int64, user store.User, id int64, text string) {
+	lang := detectLanguage(text)
+	txn, ok, err := d.store.DeleteTransactionByID(ctx, id, user.ID)
+	if err != nil {
+		d.log.Error("delete failed", "err", err, "id", id)
+		d.reply(ctx, chatID, recapFailHint(lang))
+		return
+	}
+	if !ok {
+		if lang == "ID" {
+			d.reply(ctx, chatID, "Catatan tidak ditemukan!")
+		} else {
+			d.reply(ctx, chatID, "Record not found!")
+		}
+		return
+	}
+	if lang == "ID" {
+		d.reply(ctx, chatID, fmt.Sprintf("🗑️ item dengan id %d sudah dihapus\n🛍️: %s", id, txn.Item))
+	} else {
+		d.reply(ctx, chatID, fmt.Sprintf("🗑️ item deleted for id: %d\n🛍️: %s", id, txn.Item))
+	}
+}
+
+// handleRecap: the AI returns a structured filter only; Go builds the
+// parameterized query. No model output ever reaches SQL as text.
+func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.User, text string) {
+	categories, err := d.store.ListActiveCategories(ctx)
+	if err != nil {
+		d.log.Error("load categories failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	now := d.nowFn().In(d.tz)
+	filter, err := d.ai.ParseRecapFilter(ctx, text, now, categories)
+	if err != nil {
+		d.log.Error("parse recap filter failed", "err", err, "raw", text)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+	if !filter.IsRecapRequest {
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	from, to, err := parseAndValidateRange(filter.DateFrom, filter.DateTo, now)
+	if err != nil {
+		d.log.Warn("recap range invalid", "err", err, "raw", text)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	lang := filter.Language
+	if lang != "ID" {
+		lang = "EN"
+	}
+
+	validCats := intersect(filter.Categories, categories)
+
+	f := store.TxnFilter{UserID: user.ID, From: from, To: to, Categories: validCats}
+	txns, err := d.store.ListTransactions(ctx, f)
+	if err != nil {
+		d.log.Error("list transactions failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint(lang))
+		return
+	}
+
+	if len(txns) == 0 {
+		if lang == "ID" {
+			d.reply(ctx, chatID, "Tidak ada catatan pada periode ini.")
+		} else {
+			d.reply(ctx, chatID, "No transactions in this period.")
+		}
+		return
+	}
+
+	currencies, err := d.store.ListActiveCurrencies(ctx)
+	if err != nil {
+		d.log.Error("load currencies failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint(lang))
+		return
+	}
+	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0)
+	if err := d.tg.SendMessages(chatID, parts); err != nil {
+		d.log.Error("send recap failed", "err", err)
+	}
+}
+
+func recapFailHint(lang string) string {
+	if lang == "ID" {
+		return "Maaf, permintaan rekap tidak bisa diproses. Coba misalnya 'recap nov 2025' atau 'rekap bulan ini'."
+	}
+	return "Sorry, I couldn't process that recap request. Try e.g. 'recap nov 2025' or 'rekap bulan ini'."
+}
+
+// parseAndValidateRange parses the AI's date bounds and enforces the guard
+// rails: from <= to, both valid, range clamped to 5 years.
+func parseAndValidateRange(fromStr, toStr string, now time.Time) (time.Time, time.Time, error) {
+	from, err := time.ParseInLocation("2006-01-02", fromStr, now.Location())
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("bad date_from %q", fromStr)
+	}
+	to, err := time.ParseInLocation("2006-01-02", toStr, now.Location())
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("bad date_to %q", toStr)
+	}
+	if from.After(to) {
+		return time.Time{}, time.Time{}, fmt.Errorf("date_from %s after date_to %s", fromStr, toStr)
+	}
+	if to.Sub(from) > 5*365*24*time.Hour {
+		to = from.AddDate(5, 0, 0)
+	}
+	return from, to, nil
+}
+
+func intersect(requested, known []string) []string {
+	var out []string
+	for _, r := range requested {
+		for _, k := range known {
+			if strings.EqualFold(r, k) {
+				out = append(out, k)
+				break
+			}
+		}
+	}
+	return out
+}
 
 func firstName(displayName string) string {
 	if i := strings.IndexByte(displayName, ' '); i > 0 {
@@ -230,47 +365,9 @@ func formatConfirmation(t store.Transaction, currencies []store.Currency, first,
 	return b.String()
 }
 
-// FormatAmount renders a NUMERIC amount string per the currency's rules:
-// IDR (0 decimals) -> "Rp 150.000" with dot thousands separators; others use
-// comma thousands and dot decimals ("RM 10.50", "S$ 1,234.50").
-func FormatAmount(c *store.Currency, amount string) string {
-	if c == nil {
-		return amount
-	}
-	dp := int(c.DecimalPlaces)
-	var whole, frac string
-	if i := strings.IndexByte(amount, '.'); i >= 0 {
-		whole, frac = amount[:i], amount[i+1:]
-	} else {
-		whole = amount
-	}
-	// trim leading zeros
-	whole = strings.TrimLeft(whole, "0")
-	if whole == "" {
-		whole = "0"
-	}
-	// zero-pad/trim fraction to dp
-	if len(frac) < dp {
-		frac += strings.Repeat("0", dp-len(frac))
-	}
-	frac = frac[:dp]
-
-	thousandSep := ","
-	if dp == 0 {
-		thousandSep = "."
-	}
-	var parts []string
-	for len(whole) > 3 {
-		parts = append([]string{whole[len(whole)-3:]}, parts...)
-		whole = whole[:len(whole)-3]
-	}
-	parts = append([]string{whole}, parts...)
-	out := strings.Join(parts, thousandSep)
-	if dp > 0 {
-		out += "." + frac
-	}
-	return c.Symbol + " " + out
-}
+// FormatAmount renders amounts per currency rules (moved to internal/recap,
+// aliased here for existing callers).
+var FormatAmount = recap.FormatAmount
 
 // formatMinor converts a float major-unit amount to a NUMERIC string with the
 // currency's decimal places.
