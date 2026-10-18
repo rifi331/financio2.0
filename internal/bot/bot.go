@@ -36,6 +36,7 @@ type TxStore interface {
 	InsertTransaction(ctx context.Context, txn store.NewTransaction) (store.Transaction, error)
 	DeleteTransactionByID(ctx context.Context, id, userID int64) (store.Transaction, bool, error)
 	ListTransactions(ctx context.Context, f store.TxnFilter) ([]store.Transaction, error)
+	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
 }
 
 // Parser is the AI extraction surface.
@@ -118,6 +119,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleDelete(ctx, chatID, user, intent.DeleteID, intent.Text)
 	case router.IntentRecap:
 		outcome = d.handleRecap(ctx, chatID, user, intent.Text)
+	case router.IntentDuplicate:
+		outcome = d.handleDuplicate(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:
@@ -407,6 +410,83 @@ func recapFailHint(lang string) string {
 		return "Maaf, permintaan rekap tidak bisa diproses. Coba misalnya 'recap nov 2025' atau 'rekap bulan ini'."
 	}
 	return "Sorry, I couldn't process that recap request. Try e.g. 'recap nov 2025' or 'rekap bulan ini'."
+}
+
+// handleDuplicate lists same-user transactions in the requested month that
+// share item + amount + currency + date — likely accidental double entries.
+// The month is interpreted by the same AI filter the recap flow uses.
+func (d *Dispatcher) handleDuplicate(ctx context.Context, chatID int64, user store.User, text string) (outcome string) {
+	outcome = "error"
+	categories, err := d.store.ListActiveCategories(ctx)
+	if err != nil {
+		d.log.Error("load categories failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	now := d.nowFn().In(d.tz)
+	filter, err := d.ai.ParseRecapFilter(ctx, text, now, categories)
+	if err != nil {
+		d.log.Error("parse recap filter failed", "err", err, "raw", text)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+	from, to, err := parseAndValidateRange(filter.DateFrom, filter.DateTo, now)
+	if err != nil {
+		d.log.Warn("duplicate range invalid", "err", err, "raw", text)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	groups, err := d.store.ListDuplicateGroups(ctx, user.ID, from, to)
+	if err != nil {
+		d.log.Error("list duplicate groups failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	lang := filter.Language
+	if lang != "ID" {
+		lang = "EN"
+	}
+	if len(groups) == 0 {
+		if lang == "ID" {
+			d.reply(ctx, chatID, fmt.Sprintf("✅ Tidak ada transaksi duplikat pada %s.", from.In(d.tz).Format("January 2006")))
+		} else {
+			d.reply(ctx, chatID, fmt.Sprintf("✅ No duplicate transactions in %s.", from.In(d.tz).Format("January 2006")))
+		}
+		return "empty"
+	}
+
+	dp := func(code string) int {
+		if code == "IDR" {
+			return 0
+		}
+		return 2
+	}
+	var b strings.Builder
+	if lang == "ID" {
+		fmt.Fprintf(&b, "🔁 %d grup duplikat pada %s:\n", len(groups), from.In(d.tz).Format("January 2006"))
+	} else {
+		fmt.Fprintf(&b, "🔁 %d duplicate groups in %s:\n", len(groups), from.In(d.tz).Format("January 2006"))
+	}
+	for _, g := range groups {
+		ids := make([]string, len(g.IDs))
+		for i, id := range g.IDs {
+			ids[i] = fmt.Sprintf("hapus %d", id)
+			if lang != "ID" {
+				ids[i] = fmt.Sprintf("delete %d", id)
+			}
+		}
+		fmt.Fprintf(&b, "• %dx %s — %s (%s) [%s]\n",
+			len(g.IDs), recap.FormatAmountCode(g.Currency, dp(g.Currency), g.Amount),
+			g.Item, g.EntryDate.In(d.tz).Format("2006-01-02"), strings.Join(ids, " / "))
+	}
+	if err := d.tg.SendMessages(chatID, []string{b.String()}); err != nil {
+		d.log.Error("send duplicates failed", "err", err)
+		return
+	}
+	return "duplicates"
 }
 
 // parseAndValidateRange parses the AI's date bounds and enforces the guard

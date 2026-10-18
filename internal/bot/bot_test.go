@@ -21,10 +21,18 @@ type fakeStore struct {
 	unauthorized bool // when true, no user is known and EnsureUser records the attempt
 	ensured      []int64
 	lastFilter   *store.TxnFilter
+	dupGroups    []store.DuplicateGroup
+	lastDupRange *[2]time.Time
 }
 
 func (f *fakeStore) ListActiveCategories(context.Context) ([]string, error) {
 	return []string{"Groceries", "Meals", "Housing", "Others"}, nil
+}
+
+func (f *fakeStore) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error) {
+	r := [2]time.Time{from, to}
+	f.lastDupRange = &r
+	return f.dupGroups, nil
 }
 
 func (f *fakeStore) ListActiveCurrencies(context.Context) ([]store.Currency, error) {

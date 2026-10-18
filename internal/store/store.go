@@ -330,3 +330,41 @@ func (s *Store) ListDashboardTransactions(ctx context.Context, f DashboardFilter
 	}
 	return out, rows.Err()
 }
+
+// DuplicateGroup is a set of transactions that share item + amount + currency
+// + date — likely accidental double entries.
+type DuplicateGroup struct {
+	Item      string
+	Amount    string // NUMERIC as text
+	Currency  string
+	EntryDate time.Time
+	IDs       []int64
+}
+
+// ListDuplicateGroups returns groups of same-user transactions within
+// [from, to) that share item, total_amount, currency and entry_date, where
+// the group has more than one member. Ordered by date.
+func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]DuplicateGroup, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT t.item, t.total_amount::text, t.currency_code, t.entry_date,
+			array_agg(t.id ORDER BY t.id)
+		FROM transaction_log t
+		WHERE t.user_id = $1 AND t.entry_date >= $2 AND t.entry_date < $3
+		GROUP BY t.item, t.total_amount, t.currency_code, t.entry_date
+		HAVING count(*) > 1
+		ORDER BY t.entry_date, t.item`, userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("list duplicate groups: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DuplicateGroup
+	for rows.Next() {
+		var g DuplicateGroup
+		if err := rows.Scan(&g.Item, &g.Amount, &g.Currency, &g.EntryDate, &g.IDs); err != nil {
+			return nil, fmt.Errorf("scan duplicate group: %w", err)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}

@@ -13,6 +13,7 @@ const (
 	IntentEntry IntentKind = iota
 	IntentDelete
 	IntentRecap
+	IntentDuplicate
 	IntentPhoto
 	IntentPDF
 	IntentHelp
@@ -37,6 +38,8 @@ type Intent struct {
 var deleteRe = regexp.MustCompile(`(?i)^\s*(hapus|delete|del)\s+#?(\d+)\s*$`)
 
 var helpRe = regexp.MustCompile(`^/(start|help)(@\w+)?$`)
+
+var duplicateRe = regexp.MustCompile(`(?i)\b(check|cek|find|cari)\s+(for\s+)?(duplicates?|duplikat)\b`)
 
 var recapWords = []string{"recap", "rekap", "summary", "ringkasan"}
 
@@ -64,6 +67,9 @@ func Classify(m Message) Intent {
 	}
 
 	lower := strings.ToLower(m.Text)
+	if duplicateRe.MatchString(lower) {
+		return Intent{Kind: IntentDuplicate, Text: m.Text}
+	}
 	for _, w := range recapWords {
 		if strings.Contains(lower, w) {
 			return Intent{Kind: IntentRecap, Text: m.Text}
@@ -82,6 +88,8 @@ func (k IntentKind) String() string {
 		return "delete"
 	case IntentRecap:
 		return "recap"
+	case IntentDuplicate:
+		return "duplicate"
 	case IntentPhoto:
 		return "photo"
 	case IntentPDF:
