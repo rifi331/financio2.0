@@ -98,3 +98,26 @@ func TestBuildGroupByCategory(t *testing.T) {
 		t.Error("not a PDF")
 	}
 }
+
+func TestBuildChartsAndInsightsMultiCategory(t *testing.T) {
+	d := sampleData()
+	d.Txns = append(d.Txns,
+		store.Transaction{Item: "obat", CategoryName: "Medical", CurrencyCode: "MYR", TotalAmount: "198.00", Direction: "expense", EntryDate: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)},
+		store.Transaction{Item: "sewa", CategoryName: "Housing", CurrencyCode: "MYR", TotalAmount: "1200.00", Direction: "expense", EntryDate: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)},
+	)
+	d.GroupByCategory = true
+	b, err := Build(d)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !bytes.HasPrefix(b, []byte("%PDF")) || !bytes.Contains(b, []byte("%%EOF")) {
+		t.Error("invalid PDF with charts/insights")
+	}
+	base, err := Build(sampleData())
+	if err != nil {
+		t.Fatalf("base build: %v", err)
+	}
+	if len(b) <= len(base) {
+		t.Error("charts should add content")
+	}
+}

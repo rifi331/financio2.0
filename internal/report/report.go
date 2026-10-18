@@ -67,8 +67,8 @@ func Build(d Data) ([]byte, error) {
 	secSummary := pdf.AddLink()
 	pdf.AddPage()
 	pageSummary := pdf.PageNo()
-	title(pdf, fmt.Sprintf("Financio — Full Report %s", d.From.In(d.TZ).Format("January 2006")))
-	subtitle(pdf, fmt.Sprintf("Period: %s to %s · Generated %s · %d transactions",
+	title(pdf, fmt.Sprintf("Financio - Full Report %s", d.From.In(d.TZ).Format("January 2006")))
+	subtitle(pdf, fmt.Sprintf("Period: %s to %s - Generated %s - %d transactions",
 		d.From.In(d.TZ).Format("2 Jan 2006"), d.To.In(d.TZ).AddDate(0, 0, -1).Format("2 Jan 2006"),
 		d.Generated.In(d.TZ).Format("2 Jan 2006 15:04"), len(d.Txns)))
 
@@ -114,6 +114,11 @@ func Build(d Data) ([]byte, error) {
 		pdf.Ln(2)
 		heading(pdf, code)
 		drawPie(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+		drawBars(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+		drawInsights(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+		if pdf.GetY() > 240 {
+			pdf.AddPage()
+		}
 	}
 
 	// --- Section 3: expense transactions ---
@@ -235,7 +240,7 @@ func drawPie(pdf *fpdf.Fpdf, catSums map[string]float64, code string, dp int) {
 		pdf.SetXY(105, ly)
 		pdf.CellFormat(5, 5, "", "0", 0, "C", true, 0, "")
 		pdf.SetXY(112, ly)
-		pdf.CellFormat(0, 5, fmt.Sprintf("%s — %s (%.1f%%)", n,
+		pdf.CellFormat(0, 5, fmt.Sprintf("%s - %s (%.1f%%)", n,
 			formatAmount(code, dp, catSums[n]), frac*100), "0", 0, "L", false, 0, "")
 	}
 	pdf.SetXY(15, cy+r+8)
@@ -264,6 +269,16 @@ func txnTable(pdf *fpdf.Fpdf, txns []store.Transaction, d Data) {
 			}
 			heading(pdf, c)
 			txnRows(pdf, byCat[c], d)
+			// Per-category subtotal, per currency present in this group.
+			sub := sumBy(byCat[c])
+			subParts := make([]string, 0, len(sub))
+			for _, code := range sortedCodes(sub) {
+				subParts = append(subParts, formatAmount(code, decimalPlaces(d.Currencies, code), sub[code]))
+			}
+			pdf.SetFont("Helvetica", "B", 9)
+			pdf.SetTextColor(90, 107, 123)
+			pdf.CellFormat(0, 6, "Subtotal: "+strings.Join(subParts, " + "), "", 1, "R", false, 0, "")
+			pdf.SetTextColor(0, 0, 0)
 			pdf.Ln(2)
 		}
 		return
@@ -306,7 +321,7 @@ func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return s[:n-1] + "..."
 }
 
 func title(pdf *fpdf.Fpdf, s string) {
@@ -341,4 +356,80 @@ func note(pdf *fpdf.Fpdf, s string) {
 	pdf.SetTextColor(120, 120, 120)
 	pdf.CellFormat(0, 5, s, "", 1, "L", false, 0, "")
 	pdf.SetTextColor(0, 0, 0)
+}
+
+// sortedCatNames returns category names ordered by spend, largest first.
+func sortedCatNames(catSums map[string]float64) []string {
+	names := make([]string, 0, len(catSums))
+	total := 0.0
+	for n, v := range catSums {
+		names = append(names, n)
+		total += v
+	}
+	sort.Slice(names, func(i, j int) bool { return catSums[names[i]] > catSums[names[j]] })
+	return names
+}
+
+// drawBars renders a horizontal bar chart of category sums below the pie.
+func drawBars(pdf *fpdf.Fpdf, catSums map[string]float64, code string, dp int) {
+	names := sortedCatNames(catSums)
+	if len(names) == 0 {
+		return
+	}
+	max := catSums[names[0]]
+	if max <= 0 {
+		return
+	}
+
+	pdf.Ln(2)
+	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetTextColor(28, 39, 51)
+	pdf.CellFormat(0, 6, "Bar chart", "", 1, "L", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+
+	const labelW, barMaxW, rowH = 55.0, 90.0, 6.0
+	x0 := pdf.GetX()
+	for i, n := range names {
+		y := pdf.GetY()
+		pdf.SetXY(x0, y)
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.CellFormat(labelW, rowH, truncate(n, 28), "", 0, "L", false, 0, "")
+		w := barMaxW * (catSums[n] / max)
+		col := palette[i%len(palette)]
+		pdf.SetFillColor(int(col[0]), int(col[1]), int(col[2]))
+		pdf.Rect(x0+labelW, y+1, w, rowH-2, "F")
+		pdf.SetXY(x0+labelW+barMaxW+2, y)
+		pdf.CellFormat(0, rowH, formatAmount(code, dp, catSums[n]), "", 1, "L", false, 0, "")
+	}
+	pdf.Ln(2)
+}
+
+// drawInsights lists the top 3 categories by spend with share of total.
+func drawInsights(pdf *fpdf.Fpdf, catSums map[string]float64, code string, dp int) {
+	names := sortedCatNames(catSums)
+	total := 0.0
+	for _, v := range catSums {
+		total += v
+	}
+	if total <= 0 || len(names) == 0 {
+		return
+	}
+
+	pdf.Ln(1)
+	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetTextColor(28, 39, 51)
+	pdf.CellFormat(0, 6, "Insights - top 3 expenses ("+code+")", "", 1, "L", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Helvetica", "", 9)
+	top := 3
+	if len(names) < top {
+		top = len(names)
+	}
+	for i := 0; i < top; i++ {
+		n := names[i]
+		pdf.CellFormat(0, 5.5, fmt.Sprintf("%d. %s - %s (%.1f%% of %s expenses)",
+			i+1, n, formatAmount(code, dp, catSums[n]), catSums[n]/total*100, code),
+			"", 1, "L", false, 0, "")
+	}
+	pdf.Ln(2)
 }
