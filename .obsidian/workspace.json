@@ -190,17 +190,17 @@
   },
   "active": "f4666ad77934c712",
   "lastOpenFiles": [
-    "Makefile",
-    "Makefile.tmp.28084.4d5bbeee192f",
-    "internal/receipt/doc.go",
-    "internal/recap/doc.go",
-    "internal/ai/doc.go",
-    "internal/router/doc.go",
-    "internal/auth/doc.go",
-    "internal/telegram/doc.go",
-    "cmd/financio/main.go",
-    "cmd/financio/main.go.tmp.28084.46dcf3521e4f",
-    "internal/config/config_test.go.tmp.28084.4c627aa77b1f",
+    "status.md.tmp.28084.ffdd09327476",
+    "status.md.tmp.28084.e30f16eed4e1",
+    "go.sum",
+    "internal/store/store_test.go.tmp.28084.fcfcf75d28a5",
+    "internal/store/store_test.go.tmp.28084.bdcaea4c4957",
+    "internal/store/store_test.go",
+    "internal/store/store_test.go.tmp.28084.06ff8ff02d53",
+    "internal/store/store.go.tmp.28084.6712594ae973",
+    "internal/store/store.go",
+    "internal/store/store.go.tmp.28084.441133fa23f1",
+    "migrations/embed.go",
     "prompts/1-foundation.md"
   ]
 }
