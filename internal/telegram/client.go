@@ -120,6 +120,16 @@ func (c *Client) SendMessage(chatID int64, text string) error {
 	return c.SendMessages(chatID, []string{text})
 }
 
+// SendDocument uploads an in-memory file as a Telegram document.
+func (c *Client) SendDocument(chatID int64, filename string, data []byte) error {
+	msg := tgbotapi.NewDocument(chatID, tgbotapi.FileBytes{Name: filename, Bytes: data})
+	if _, err := c.api.Send(msg); err != nil {
+		c.log.Error("send document failed", "chat_id", chatID, "err", err)
+		return err
+	}
+	return nil
+}
+
 // SendMessages sends each part as its own plain-text message, splitting any
 // part longer than 4000 characters at line boundaries where possible.
 func (c *Client) SendMessages(chatID int64, parts []string) error {

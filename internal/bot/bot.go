@@ -16,6 +16,7 @@ import (
 	"github.com/rifi331/financio/internal/auth"
 	"github.com/rifi331/financio/internal/recap"
 	"github.com/rifi331/financio/internal/receipt"
+	"github.com/rifi331/financio/internal/report"
 	"github.com/rifi331/financio/internal/router"
 	"github.com/rifi331/financio/internal/store"
 )
@@ -27,6 +28,7 @@ var debugStack = stackBytes
 type Sender interface {
 	SendMessage(chatID int64, text string) error
 	SendMessages(chatID int64, parts []string) error
+	SendDocument(chatID int64, filename string, data []byte) error
 }
 
 // TxStore is the persistence surface the dispatcher needs.
@@ -121,6 +123,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleRecap(ctx, chatID, user, intent.Text)
 	case router.IntentDuplicate:
 		outcome = d.handleDuplicate(ctx, chatID, user, intent.Text)
+	case router.IntentReport:
+		outcome = d.handleReport(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:
@@ -403,6 +407,71 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 		return
 	}
 	return "recap"
+}
+
+// handleReport builds the full-report PDF (summary, expense pies per
+// currency, income/expense tables) and sends it as a document.
+func (d *Dispatcher) handleReport(ctx context.Context, chatID int64, user store.User, text string) (outcome string) {
+	outcome = "error"
+	categories, err := d.store.ListActiveCategories(ctx)
+	if err != nil {
+		d.log.Error("load categories failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	now := d.nowFn().In(d.tz)
+	filter, err := d.ai.ParseRecapFilter(ctx, text, now, categories)
+	if err != nil {
+		d.log.Error("parse report filter failed", "err", err, "raw", text)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+	from, to, err := parseAndValidateRange(filter.DateFrom, filter.DateTo, now)
+	if err != nil {
+		d.log.Warn("report range invalid", "err", err, "raw", text)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	f := store.TxnFilter{UserID: user.ID, From: from, To: to, Categories: intersect(filter.Categories, categories)}
+	txns, err := d.store.ListTransactions(ctx, f)
+	if err != nil {
+		d.log.Error("list transactions failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+	if len(txns) == 0 {
+		if filter.Language == "ID" {
+			d.reply(ctx, chatID, "Tidak ada catatan pada periode ini.")
+		} else {
+			d.reply(ctx, chatID, "No transactions in this period.")
+		}
+		return "empty"
+	}
+
+	currencies, err := d.store.ListActiveCurrencies(ctx)
+	if err != nil {
+		d.log.Error("load currencies failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+
+	pdfBytes, err := report.Build(report.Data{
+		From: from, To: to, Txns: txns, Currencies: currencies,
+		TZ: d.tz, Generated: now,
+	})
+	if err != nil {
+		d.log.Error("build report failed", "err", err)
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
+	filename := fmt.Sprintf("financio-report-%s.pdf", from.In(d.tz).Format("2006-01"))
+	if err := d.tg.SendDocument(chatID, filename, pdfBytes); err != nil {
+		d.log.Error("send report failed", "err", err)
+		return
+	}
+	return "report"
 }
 
 func recapFailHint(lang string) string {

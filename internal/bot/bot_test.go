@@ -156,7 +156,15 @@ func (f *fakeAI) ParseRecapFilter(_ context.Context, text string, _ time.Time, _
 }
 
 type fakeSender struct {
-	messages []string
+	messages  []string
+	documents []string // filenames sent via SendDocument
+	lastDoc   []byte
+}
+
+func (f *fakeSender) SendDocument(_ int64, filename string, data []byte) error {
+	f.documents = append(f.documents, filename)
+	f.lastDoc = data
+	return nil
 }
 
 func (f *fakeSender) SendMessage(_ int64, text string) error {

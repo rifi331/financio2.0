@@ -14,6 +14,7 @@ const (
 	IntentDelete
 	IntentRecap
 	IntentDuplicate
+	IntentReport
 	IntentPhoto
 	IntentPDF
 	IntentHelp
@@ -41,6 +42,8 @@ var helpRe = regexp.MustCompile(`^/(start|help)(@\w+)?$`)
 
 var duplicateRe = regexp.MustCompile(`(?i)\b(check|cek|find|cari)\s+(for\s+)?(duplicates?|duplikat)\b`)
 
+var reportRe = regexp.MustCompile(`(?i)\b(full|complete|lengkap)\s+(report|laporan)\b|\blaporan\s+lengkap\b`)
+
 var recapWords = []string{"recap", "rekap", "summary", "ringkasan"}
 
 // Classify maps a message to an intent. Media beats text classification; a
@@ -67,6 +70,9 @@ func Classify(m Message) Intent {
 	}
 
 	lower := strings.ToLower(m.Text)
+	if reportRe.MatchString(lower) {
+		return Intent{Kind: IntentReport, Text: m.Text}
+	}
 	if duplicateRe.MatchString(lower) {
 		return Intent{Kind: IntentDuplicate, Text: m.Text}
 	}
@@ -90,6 +96,8 @@ func (k IntentKind) String() string {
 		return "recap"
 	case IntentDuplicate:
 		return "duplicate"
+	case IntentReport:
+		return "report"
 	case IntentPhoto:
 		return "photo"
 	case IntentPDF:
