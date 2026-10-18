@@ -34,6 +34,7 @@ type Detail struct {
 	Amount   float64 `json:"amount"`
 	Qty      int     `json:"qty"`
 	Location string  `json:"location"`
+	Note     string  `json:"note"` // discounts, vouchers, payment type, etc. (may be empty)
 }
 
 // ParseEntry asks the model to extract a transaction from the user's message
@@ -79,15 +80,19 @@ Rules:
   "rp"/"idr" -> IDR, "sgd"/"s$" -> SGD, "$"/"usd" -> USD. Normalize shorthand
   amounts: "10rm" -> 10 MYR, "rp50k" or "50k" -> 50000. The currency must be
   exactly one of: %s.
-- Date: prefer a date stated in the message ("yesterday", "kemarin",
-  "kemaren lusa"/"last friday", explicit dates). Otherwise use the current
-  date given in the user message. Reply with YYYY-MM-DD.
+- Date: prefer a date stated in the message and compute relative dates from
+  the current date given in the user message: "yesterday"/"kemarin",
+  "kemarin lusa"/"day before yesterday", "tomorrow"/"besok", "last week",
+  "last month", "last year", "last friday"/"jumat kemarin", explicit dates
+  ("5 oct", "2025-10-16"). Otherwise use the current date. Reply with
+  YYYY-MM-DD.
 - Category: choose exactly one from: %s.
 - Direction: "income" when the message is about receiving money (gaji, salary,
   bonus, refund, received, diterima, transfer masuk); otherwise "expense".
 - Item: a short label for the transaction.
 - details: list the individual line items when the message breaks the purchase
-  down; each needs item, amount, qty (default 1), and location (may be empty).
+  down; each needs item, amount, qty (default 1), location (may be empty), and
+  note (discounts, vouchers, or payment remarks; may be empty).
 - If the message is a greeting, chit-chat, or anything that is not a
   transaction, set is_transaction=false and leave the other fields empty.`,
 		in.DefaultCurrency,
@@ -115,12 +120,13 @@ func entrySchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []string{"item", "amount", "qty", "location"},
+					"required":             []string{"item", "amount", "qty", "location", "note"},
 					"properties": map[string]any{
 						"item":     prop("string"),
 						"amount":   prop("number"),
 						"qty":      prop("integer"),
 						"location": prop("string"),
+						"note":     prop("string"),
 					},
 				},
 			},

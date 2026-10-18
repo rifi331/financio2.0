@@ -57,7 +57,8 @@ Part B — AI client and the entry flow:
      IDR, "sgd"/"s$" -> SGD, "$"/"usd" -> USD. Amounts like "10rm" or "rp50k" or "2.5k"
      must be normalized (50k -> 50000).
    - Date: prefer dates stated in the message ("yesterday", "kemarin", "last friday",
-     "kemaren lusa"); otherwise use the provided current date. Current date (in
+     "kemaren lusa", "tomorrow", "besok" — future dates allowed, validation accepts up
+     to 1 day ahead); otherwise use the provided current date. Current date (in
      {DISPLAY_TZ}) is injected into the user message by Go, not guessed by the model.
    - Category: choose exactly one from the provided list.
    - Direction: income when the message is about receiving money (gaji, salary, bonus,

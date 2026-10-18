@@ -91,6 +91,10 @@ Rules:
   otherwise default to %s. The currency must be exactly one of: %s.
 - Dates: use dates printed on the document when present (YYYY-MM-DD);
   otherwise fall back to the current date given in the user message.
+- Discounts and vouchers: apply them to the line amounts they belong to, and
+  record each one in that detail line's note (e.g. "voucher -5.00").
+- Payment type: when the document shows how a row was paid (Duitnow QR,
+  Card Payment, RFID, cash...), record it in that line's note.
 - Category: choose exactly one from: %s.
 - Direction: "expense" for spending, "income" only for genuine income.
 - Item: a short label for each transaction.
@@ -112,6 +116,10 @@ Rules (ported from 1.0):
   are wallet top-ups (transfers to self), not income.
 - Use the per-line transactionDate printed on the document (YYYY-MM-DD);
   when a row has no date, inherit the nearest previous row's date.
+- Discounts and vouchers: apply them to the row amounts they belong to and
+  record each one in that detail line's note (e.g. "voucher -5.00").
+- Payment type: record the row's type (Duitnow QR, Payment, Card Payment,
+  RFID...) in that line's note.
 - Aggregate line details into one or many transactions: one per statement row,
   each with its own date; or a single grouped transaction when rows clearly
   belong to one purchase.
