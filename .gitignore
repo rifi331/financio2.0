@@ -3,3 +3,6 @@ dist/
 /financio
 /financio.exe
 deploy/application-deploy.local.yaml
+
+# local notes, never commit
+migrations/token.txt
