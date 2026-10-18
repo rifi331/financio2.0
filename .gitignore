@@ -1,5 +1,5 @@
 dist/
 .env
-financio
-financio.exe
+/financio
+/financio.exe
 deploy/application-deploy.local.yaml
