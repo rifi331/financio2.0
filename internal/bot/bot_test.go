@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ type fakeStore struct {
 	dupGroups    []store.DuplicateGroup
 	prompts      map[string]string
 	sysparams    map[string]string
+	budgets      map[[2]string]string
 	lastDupRange *[2]time.Time
 }
 
@@ -50,6 +52,42 @@ func (f *fakeStore) DeletePrompt(_ context.Context, name string) (bool, error) {
 	}
 	delete(f.prompts, name)
 	return true, nil
+}
+
+func (f *fakeStore) SetBudget(_ context.Context, cat, code, limit string) error {
+	if f.budgets == nil {
+		f.budgets = map[[2]string]string{}
+	}
+	f.budgets[[2]string{cat, code}] = limit
+	return nil
+}
+
+func (f *fakeStore) DeleteBudget(_ context.Context, cat, code string) (bool, error) {
+	k := [2]string{cat, code}
+	if _, ok := f.budgets[k]; !ok {
+		return false, nil
+	}
+	delete(f.budgets, k)
+	return true, nil
+}
+
+func (f *fakeStore) ListBudgets(_ context.Context) ([]store.Budget, error) {
+	var out []store.Budget
+	for k, v := range f.budgets {
+		out = append(out, store.Budget{CategoryName: k[0], CurrencyCode: k[1], MonthlyLimit: v})
+	}
+	return out, nil
+}
+
+func (f *fakeStore) MonthCategorySpend(_ context.Context, cat, code string, t time.Time) (string, error) {
+	total := 0.0
+	for _, r := range f.rows {
+		if r.CategoryName == cat && r.CurrencyCode == code && r.Direction == "expense" {
+			amt, _ := strconv.ParseFloat(r.TotalAmount, 64)
+			total += amt
+		}
+	}
+	return strconv.FormatFloat(total, 'f', 2, 64), nil
 }
 
 func (f *fakeStore) GetSysParam(_ context.Context, key string) (string, bool, error) {

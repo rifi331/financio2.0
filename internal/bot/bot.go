@@ -46,6 +46,10 @@ type TxStore interface {
 	GetSysParam(ctx context.Context, key string) (string, bool, error)
 	SetSysParam(ctx context.Context, key, value string) error
 	ListSysParams(ctx context.Context) ([]store.SysParam, error)
+	SetBudget(ctx context.Context, categoryName, currencyCode, limit string) error
+	DeleteBudget(ctx context.Context, categoryName, currencyCode string) (bool, error)
+	ListBudgets(ctx context.Context) ([]store.Budget, error)
+	MonthCategorySpend(ctx context.Context, categoryName, currencyCode string, t time.Time) (string, error)
 }
 
 // Parser is the AI extraction surface.
@@ -154,6 +158,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handlePrompt(ctx, chatID, user, intent.Text)
 	case router.IntentParam:
 		outcome = d.handleParam(ctx, chatID, user, intent.Text)
+	case router.IntentBudget:
+		outcome = d.handleBudget(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:
@@ -227,7 +233,7 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 		return
 	}
 
-	d.reply(ctx, chatID, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang))
+	d.reply(ctx, chatID, d.withBudgetLines(ctx, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang), []store.Transaction{txn}))
 	return "saved"
 }
 
@@ -329,9 +335,9 @@ func (d *Dispatcher) insertReceiptEntries(ctx context.Context, chatID int64, use
 		d.reply(ctx, chatID, hint(lang))
 		return "no_transaction"
 	case len(txns) == 1:
-		d.reply(ctx, chatID, formatConfirmation(txns[0], currencies, firstName(user.DisplayName), lang))
+		d.reply(ctx, chatID, d.withBudgetLines(ctx, formatConfirmation(txns[0], currencies, firstName(user.DisplayName), lang), txns))
 	default:
-		d.reply(ctx, chatID, receipt.FormatMulti(txns, currencies))
+		d.reply(ctx, chatID, d.withBudgetLines(ctx, receipt.FormatMulti(txns, currencies), txns))
 	}
 	return "saved"
 }
@@ -434,6 +440,9 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 		return
 	}
 	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0, filter.OrderBy)
+	if bl := d.budgetRecapLines(ctx, txns); len(bl) > 0 {
+		parts = append(parts, strings.Join(bl, "\n"))
+	}
 	if err := d.tg.SendMessages(chatID, parts); err != nil {
 		d.log.Error("send recap failed", "err", err)
 		return
@@ -590,9 +599,15 @@ func (d *Dispatcher) handleReport(ctx context.Context, chatID int64, user store.
 		return
 	}
 
+	budgets, err := d.store.ListBudgets(ctx)
+	if err != nil {
+		d.log.Error("load budgets failed", "err", err)
+		budgets = nil
+	}
 	pdfBytes, err := report.Build(report.Data{
 		From: from, To: to, Txns: txns, Currencies: currencies,
 		TZ: d.tz, Generated: now, GroupByCategory: filter.OrderBy == "category",
+		Budgets: budgets,
 	})
 	if err != nil {
 		d.log.Error("build report failed", "err", err)

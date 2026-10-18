@@ -32,6 +32,8 @@ type Data struct {
 	// GroupByCategory renders the tables grouped under category headings
 	// (rows by date within each) instead of one date-ordered table.
 	GroupByCategory bool
+	// Budgets are the monthly per-category limits to report against.
+	Budgets []store.Budget
 }
 
 func decimalPlaces(currencies []store.Currency, code string) int {
@@ -116,6 +118,7 @@ func Build(d Data) ([]byte, error) {
 		drawPie(pdf, catSums, code, decimalPlaces(d.Currencies, code))
 		drawBars(pdf, catSums, code, decimalPlaces(d.Currencies, code))
 		drawInsights(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+		drawBudgets(pdf, d, expenses, code, decimalPlaces(d.Currencies, code))
 		if pdf.GetY() > 240 {
 			pdf.AddPage()
 		}
@@ -429,6 +432,53 @@ func drawInsights(pdf *fpdf.Fpdf, catSums map[string]float64, code string, dp in
 		n := names[i]
 		pdf.CellFormat(0, 5.5, fmt.Sprintf("%d. %s - %s (%.1f%% of %s expenses)",
 			i+1, n, formatAmount(code, dp, catSums[n]), catSums[n]/total*100, code),
+			"", 1, "L", false, 0, "")
+	}
+	pdf.Ln(2)
+}
+
+// drawBudgets lists each budget for this currency with the period's spend
+// against the monthly limit.
+func drawBudgets(pdf *fpdf.Fpdf, d Data, expenses []store.Transaction, code string, dp int) {
+	spentByCat := sumByCategory(nil)
+	for _, t := range expenses {
+		if t.CurrencyCode != code || t.Direction != "expense" {
+			continue
+		}
+		amt, _ := parse(t.TotalAmount)
+		spentByCat[t.CategoryName] += amt
+	}
+	var rows [][2]string // category, limit
+	for _, b := range d.Budgets {
+		if b.CurrencyCode != code {
+			continue
+		}
+		rows = append(rows, [2]string{b.CategoryName, b.MonthlyLimit})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i][0] < rows[j][0] })
+
+	pdf.Ln(1)
+	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetTextColor(28, 39, 51)
+	pdf.CellFormat(0, 6, "Budgets ("+code+")", "", 1, "L", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Helvetica", "", 9)
+	for _, r := range rows {
+		limit, _ := parse(r[1])
+		spent := spentByCat[r[0]]
+		pct := 0.0
+		if limit > 0 {
+			pct = math.Round(spent / limit * 100)
+		}
+		status := ""
+		if spent > limit {
+			status = "  [OVER]"
+		}
+		pdf.CellFormat(0, 5.5, fmt.Sprintf("%s: %s/%s (%.0f%%)%s",
+			r[0], formatAmount(code, dp, spent), formatAmount(code, dp, limit), pct, status),
 			"", 1, "L", false, 0, "")
 	}
 	pdf.Ln(2)
