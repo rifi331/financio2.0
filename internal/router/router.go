@@ -15,6 +15,7 @@ const (
 	IntentRecap
 	IntentDuplicate
 	IntentReport
+	IntentPrompt
 	IntentPhoto
 	IntentPDF
 	IntentHelp
@@ -40,6 +41,8 @@ var deleteRe = regexp.MustCompile(`(?i)^\s*(hapus|delete|del)\s+#?(\d+)\s*$`)
 
 var helpRe = regexp.MustCompile(`^/(start|help)(@\w+)?$`)
 
+var promptRe = regexp.MustCompile(`^/prompt(@\w+)?(\s+.*)?$`)
+
 var duplicateRe = regexp.MustCompile(`(?i)\b(check|cek|find|cari)\s+(for\s+)?(duplicates?|duplikat)\b`)
 
 var reportRe = regexp.MustCompile(`(?i)\b(full|complete|lengkap)\s+(report|laporan)\b|\blaporan\s+lengkap\b`)
@@ -59,6 +62,10 @@ func Classify(m Message) Intent {
 
 	if helpRe.MatchString(strings.TrimSpace(m.Text)) {
 		return Intent{Kind: IntentHelp, Text: m.Text}
+	}
+
+	if promptRe.MatchString(strings.TrimSpace(m.Text)) {
+		return Intent{Kind: IntentPrompt, Text: m.Text}
 	}
 
 	if match := deleteRe.FindStringSubmatch(m.Text); match != nil {
@@ -98,6 +105,8 @@ func (k IntentKind) String() string {
 		return "duplicate"
 	case IntentReport:
 		return "report"
+	case IntentPrompt:
+		return "prompt"
 	case IntentPhoto:
 		return "photo"
 	case IntentPDF:

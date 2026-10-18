@@ -10,6 +10,7 @@ import (
 // EntryInput carries everything ParseEntry needs per request.
 type EntryInput struct {
 	Message         string   // raw user text
+	SystemTemplate  string   // optional DB-stored prompt template; "" = compiled default
 	CurrentDate     string   // YYYY-MM-DD, computed in DISPLAY_TZ by the caller
 	Categories      []string // active categories from the DB
 	Currencies      []string // active currency ISO codes from the DB
@@ -41,7 +42,7 @@ type Detail struct {
 // using strict json_schema structured output. The current date is injected by
 // Go (in DISPLAY_TZ); the model never guesses it.
 func (c *Client) ParseEntry(ctx context.Context, in EntryInput) (ParsedEntry, error) {
-	system := systemPrompt(in)
+	system := entrySystemPrompt(in)
 	user := fmt.Sprintf("[Current date: %s]\n%s", in.CurrentDate, in.Message)
 
 	req := ChatRequest{
@@ -69,6 +70,19 @@ func (c *Client) ParseEntry(ctx context.Context, in EntryInput) (ParsedEntry, er
 		p.Direction = "expense"
 	}
 	return p, nil
+}
+
+// entrySystemPrompt returns the effective system prompt: the DB-stored
+// template when present, otherwise the compiled default.
+func entrySystemPrompt(in EntryInput) string {
+	if in.SystemTemplate == "" {
+		return systemPrompt(in)
+	}
+	return ApplyTemplate(in.SystemTemplate, map[string]string{
+		"default_currency": in.DefaultCurrency,
+		"currencies":       strings.Join(in.Currencies, ", "),
+		"categories":       strings.Join(in.Categories, ", "),
+	})
 }
 
 func systemPrompt(in EntryInput) string {

@@ -35,7 +35,7 @@ func TestParseRecapFilterMonth(t *testing.T) {
 	defer srv.Close()
 
 	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
-		"recap nov 2025", today, []string{"Meals", "Groceries"})
+		"recap nov 2025", today, []string{"Meals", "Groceries"}, "")
 	if err != nil {
 		t.Fatalf("ParseRecapFilter: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestParseRecapFilterThisMonthCategories(t *testing.T) {
 	defer srv.Close()
 
 	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
-		"rekap bulan ini makan", today, []string{"Meals", "Groceries"})
+		"rekap bulan ini makan", today, []string{"Meals", "Groceries"}, "")
 	if err != nil {
 		t.Fatalf("ParseRecapFilter: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestParseRecapFilterToday(t *testing.T) {
 	defer srv.Close()
 
 	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
-		"recap today", today, []string{"Meals"})
+		"recap today", today, []string{"Meals"}, "")
 	if err != nil {
 		t.Fatalf("ParseRecapFilter: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestParseRecapFilterGarbageNotRecap(t *testing.T) {
 	defer srv.Close()
 
 	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
-		"hello garbage text", today, []string{"Meals"})
+		"hello garbage text", today, []string{"Meals"}, "")
 	if err != nil {
 		t.Fatalf("ParseRecapFilter: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestParseRecapFilterMalformed(t *testing.T) {
 	defer srv.Close()
 
 	if _, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
-		"recap nov 2025", today, []string{"Meals"}); err == nil {
+		"recap nov 2025", today, []string{"Meals"}, ""); err == nil {
 		t.Fatal("expected decode error")
 	}
 }
@@ -101,7 +101,7 @@ func TestParseRecapFilterDuplicateCheck(t *testing.T) {
 	defer srv.Close()
 
 	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
-		"check duplicate october", today, []string{"Meals"})
+		"check duplicate october", today, []string{"Meals"}, "")
 	if err != nil {
 		t.Fatalf("ParseRecapFilter: %v", err)
 	}

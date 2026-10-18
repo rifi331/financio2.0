@@ -11,6 +11,7 @@ import (
 // ReceiptInput carries everything the receipt parsers need per request.
 type ReceiptInput struct {
 	CurrentDate     string   // YYYY-MM-DD in DISPLAY_TZ
+	SystemTemplate  string   // optional DB-stored prompt template; "" = compiled default
 	Categories      []string // active categories from the DB
 	Currencies      []string // active currency ISO codes
 	DefaultCurrency string   // e.g. MYR
@@ -28,7 +29,7 @@ type ParsedReceipt struct {
 func (c *Client) ParsePhotoReceipt(ctx context.Context, image []byte, in ReceiptInput) ([]ParsedEntry, error) {
 	dataURL := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image)
 	msgs := []Message{
-		{Role: "system", Content: photoSystemPrompt(in)},
+		{Role: "system", Content: effectivePrompt(in.SystemTemplate, photoSystemPrompt, in)},
 		{Role: "user", Content: []ContentPart{
 			{Type: "text", Text: fmt.Sprintf("[Current date: %s]", in.CurrentDate)},
 			{Type: "image_url", ImageURL: &ImageURL{URL: dataURL}},
@@ -41,7 +42,7 @@ func (c *Client) ParsePhotoReceipt(ctx context.Context, image []byte, in Receipt
 // statement rules (keep spending rows, skip wallet top-up receive rows).
 func (c *Client) ParseTextReceipt(ctx context.Context, text string, in ReceiptInput) ([]ParsedEntry, error) {
 	msgs := []Message{
-		{Role: "system", Content: pdfSystemPrompt(in)},
+		{Role: "system", Content: effectivePrompt(in.SystemTemplate, pdfSystemPrompt, in)},
 		{Role: "user", Content: fmt.Sprintf("[Current date: %s]\n%s", in.CurrentDate, text)},
 	}
 	return c.parseReceipt(ctx, msgs)
@@ -68,6 +69,19 @@ func (c *Client) parseReceipt(ctx context.Context, msgs []Message) ([]ParsedEntr
 		}
 	}
 	return p.Transactions, nil
+}
+
+// effectivePrompt returns the DB template (placeholders filled) or the
+// compiled default when the template is empty.
+func effectivePrompt(tmpl string, def func(ReceiptInput) string, in ReceiptInput) string {
+	if tmpl == "" {
+		return def(in)
+	}
+	return ApplyTemplate(tmpl, map[string]string{
+		"default_currency": in.DefaultCurrency,
+		"currencies":       strings.Join(in.Currencies, ", "),
+		"categories":       strings.Join(in.Categories, ", "),
+	})
 }
 
 func photoSystemPrompt(in ReceiptInput) string {

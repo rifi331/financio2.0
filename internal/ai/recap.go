@@ -21,8 +21,13 @@ type RecapFilter struct {
 // ParseRecapFilter asks the model to interpret a recap request into a
 // structured date/category filter. today is the current date in DISPLAY_TZ,
 // injected by Go so the model never guesses dates.
-func (c *Client) ParseRecapFilter(ctx context.Context, text string, today time.Time, categories []string) (RecapFilter, error) {
+func (c *Client) ParseRecapFilter(ctx context.Context, text string, today time.Time, categories []string, systemTemplate string) (RecapFilter, error) {
 	system := recapSystemPrompt(categories)
+	if systemTemplate != "" {
+		system = ApplyTemplate(systemTemplate, map[string]string{
+			"categories": strings.Join(categories, ", "),
+		})
+	}
 	user := fmt.Sprintf("[Today's date: %s]\n%s", today.Format("2006-01-02"), text)
 
 	req := ChatRequest{

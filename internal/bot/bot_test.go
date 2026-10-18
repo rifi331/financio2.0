@@ -22,11 +22,41 @@ type fakeStore struct {
 	ensured      []int64
 	lastFilter   *store.TxnFilter
 	dupGroups    []store.DuplicateGroup
+	prompts      map[string]string
 	lastDupRange *[2]time.Time
 }
 
 func (f *fakeStore) ListActiveCategories(context.Context) ([]string, error) {
 	return []string{"Groceries", "Meals", "Housing", "Others"}, nil
+}
+
+func (f *fakeStore) GetPrompt(_ context.Context, name string) (string, bool, error) {
+	t, ok := f.prompts[name]
+	return t, ok, nil
+}
+
+func (f *fakeStore) SetPrompt(_ context.Context, name, template string) error {
+	if f.prompts == nil {
+		f.prompts = map[string]string{}
+	}
+	f.prompts[name] = template
+	return nil
+}
+
+func (f *fakeStore) DeletePrompt(_ context.Context, name string) (bool, error) {
+	if _, ok := f.prompts[name]; !ok {
+		return false, nil
+	}
+	delete(f.prompts, name)
+	return true, nil
+}
+
+func (f *fakeStore) ListPrompts(_ context.Context) ([]store.Prompt, error) {
+	var out []store.Prompt
+	for n, t := range f.prompts {
+		out = append(out, store.Prompt{Name: n, Template: t})
+	}
+	return out, nil
 }
 
 func (f *fakeStore) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error) {
@@ -147,7 +177,7 @@ func (f *fakeAI) ParseTextReceipt(_ context.Context, _ string, _ ai.ReceiptInput
 	return f.textResponse, nil
 }
 
-func (f *fakeAI) ParseRecapFilter(_ context.Context, text string, _ time.Time, _ []string) (ai.RecapFilter, error) {
+func (f *fakeAI) ParseRecapFilter(_ context.Context, text string, _ time.Time, _ []string, _ string) (ai.RecapFilter, error) {
 	f.recapRequests = append(f.recapRequests, text)
 	if r, ok := f.recapResponses[text]; ok {
 		return r, nil
