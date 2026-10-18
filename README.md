@@ -33,6 +33,7 @@ Replaces the n8n "Financio postgres" automation.
 | `DEFAULT_CURRENCY` | | `MYR` | seeded: MYR, IDR, USD, SGD |
 | `HEALTH_PORT` | | `7777` | `/healthz` |
 | `LOG_LEVEL` | | `info` | JSON logs via slog |
+| `DASHBOARD_TOKEN` | | disabled | enables read-only web dashboard on `HEALTH_PORT` (transactions + log tail) |
 
 Secrets enter at runtime only — never committed (see `docs/BRIEF.md`).
 

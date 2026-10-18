@@ -33,6 +33,8 @@ data:
   DISPLAY_TZ: Asia/Kuala_Lumpur
   DEFAULT_CURRENCY: MYR
   ALLOWED_USERS: <COMMA_SEPARATED_NAMES>
+  # Optional: enables the read-only dashboard on /healthz port when set.
+  DASHBOARD_TOKEN: <DASHBOARD_TOKEN>
   LOG_LEVEL: info
 ---
 apiVersion: apps/v1
@@ -57,7 +59,7 @@ spec:
     spec:
       containers:
         - name: financio
-          image: ghcr.io/rifi331/financio2.0:v2.0.1
+          image: ghcr.io/rifi331/financio2.0:v2.1.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:

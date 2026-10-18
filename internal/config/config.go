@@ -18,6 +18,7 @@ type Config struct {
 	DefaultCurrency  string
 	HealthPort       string
 	LogLevel         string
+	DashboardToken   string // optional; enables the web dashboard when set
 }
 
 // Load reads configuration from the environment, applying defaults and
@@ -32,6 +33,7 @@ func Load() (*Config, error) {
 		DefaultCurrency:  getenvDefault("DEFAULT_CURRENCY", "MYR"),
 		HealthPort:       getenvDefault("HEALTH_PORT", "7777"),
 		LogLevel:         getenvDefault("LOG_LEVEL", "info"),
+		DashboardToken:   strings.TrimSpace(os.Getenv("DASHBOARD_TOKEN")),
 	}
 
 	if cfg.TelegramBotToken == "" {
@@ -71,7 +73,7 @@ func getenvDefault(key, def string) string {
 // Tokens, API keys, and DSN passwords are never included.
 func (c *Config) String() string {
 	return fmt.Sprintf(
-		"Config{TelegramBotToken: %s, OpenAIAPIKey: %s, DatabaseURL: %s, OpenAIModel: %s, AllowedUsers: %v, DisplayTZ: %s, DefaultCurrency: %s, HealthPort: %s, LogLevel: %s}",
+		"Config{TelegramBotToken: %s, OpenAIAPIKey: %s, DatabaseURL: %s, OpenAIModel: %s, AllowedUsers: %v, DisplayTZ: %s, DefaultCurrency: %s, HealthPort: %s, LogLevel: %s, DashboardToken: %s}",
 		redact(c.TelegramBotToken),
 		redact(c.OpenAIAPIKey),
 		redactDSN(c.DatabaseURL),
@@ -81,6 +83,7 @@ func (c *Config) String() string {
 		c.DefaultCurrency,
 		c.HealthPort,
 		c.LogLevel,
+		redact(c.DashboardToken),
 	)
 }
 

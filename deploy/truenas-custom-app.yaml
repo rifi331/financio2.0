@@ -8,7 +8,7 @@
 # getUpdates lock — never scale past 1 replica.
 services:
   financio:
-    image: ghcr.io/rifi331/financio2.0:v2.0.1
+    image: ghcr.io/rifi331/financio2.0:v2.1.0
     restart: unless-stopped
     environment:
       # --- required (fill in the TrueNAS UI) ---
@@ -16,6 +16,7 @@ services:
       OPENAI_API_KEY: <OPENAI_API_KEY>
       DATABASE_URL: <DATABASE_URL> # e.g. postgres://user:pass@host:5432/financio
       ALLOWED_USERS: <COMMA_SEPARATED_NAMES> # e.g. "Rifi Anggriawan,Jane Doe"
+      DASHBOARD_TOKEN: <DASHBOARD_TOKEN> # optional; enables read-only web UI on HEALTH_PORT
       # --- optional (defaults shown) ---
       OPENAI_MODEL: gpt-4o-mini
       DISPLAY_TZ: Asia/Kuala_Lumpur

@@ -258,3 +258,71 @@ func scanTransaction(row pgx.Row) (Transaction, error) {
 		&t.RawMessage, &t.CreatedAt)
 	return t, err
 }
+
+// DashboardFilter narrows ListDashboardTransactions. Zero fields are unused.
+type DashboardFilter struct {
+	From, To  time.Time // entry_date range
+	Category  string    // exact category name, "" = all
+	Direction string    // expense | income, "" = all
+}
+
+// DashboardTxn is a Transaction with the owner's display name, for the web UI.
+type DashboardTxn struct {
+	Transaction
+	UserName string
+}
+
+// ListDashboardTransactions returns transactions across all users (the web
+// dashboard is household-wide), newest first, at most limit rows.
+func (s *Store) ListDashboardTransactions(ctx context.Context, f DashboardFilter, limit int) ([]DashboardTxn, error) {
+	clauses := []string{"TRUE"}
+	args := []any{}
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if !f.From.IsZero() {
+		clauses = append(clauses, "t.entry_date >= "+arg(f.From))
+	}
+	if !f.To.IsZero() {
+		clauses = append(clauses, "t.entry_date < "+arg(f.To))
+	}
+	if f.Category != "" {
+		clauses = append(clauses, "c.name = "+arg(f.Category))
+	}
+	if f.Direction != "" {
+		clauses = append(clauses, "t.direction = "+arg(f.Direction))
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	clauses = append(clauses, "TRUE")
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT t.id, t.user_id, t.item, t.category_id, c.name,
+			t.currency_code, t.total_amount::text, t.direction, t.entry_date,
+			t.source, COALESCE(t.raw_message, ''), t.created_at,
+			COALESCE(u.display_name, '')
+		FROM transaction_log t
+		JOIN category c ON c.id = t.category_id
+		JOIN app_user u ON u.id = t.user_id
+		WHERE `+strings.Join(clauses, " AND ")+`
+		ORDER BY t.entry_date DESC, t.id DESC
+		LIMIT `+arg(limit), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list dashboard transactions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DashboardTxn
+	for rows.Next() {
+		var d DashboardTxn
+		if err := rows.Scan(&d.ID, &d.UserID, &d.Item, &d.CategoryID, &d.CategoryName,
+			&d.CurrencyCode, &d.TotalAmount, &d.Direction, &d.EntryDate, &d.Source,
+			&d.RawMessage, &d.CreatedAt, &d.UserName); err != nil {
+			return nil, fmt.Errorf("scan dashboard transaction: %w", err)
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}

@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"github.com/rifi331/financio/internal/router"
 	"github.com/rifi331/financio/internal/store"
 	"github.com/rifi331/financio/internal/telegram"
+	"github.com/rifi331/financio/internal/web"
 	"github.com/rifi331/financio/migrations"
 )
 
@@ -62,7 +64,8 @@ func run() error {
 		return err
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	ring := web.NewRing(500)
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, ring), &slog.HandlerOptions{
 		Level: parseLevel(cfg.LogLevel),
 	}))
 	slog.SetDefault(logger)
@@ -101,13 +104,11 @@ func run() error {
 	// At most 4 messages processed concurrently, per-chat order preserved.
 	pool4 := bot.NewPool(4)
 
-	// Health endpoint.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	srv := &http.Server{Addr: ":" + cfg.HealthPort, Handler: mux}
+	// Health endpoint + optional read-only dashboard (same port).
+	srv := &http.Server{
+		Addr:    ":" + cfg.HealthPort,
+		Handler: web.New(st, ring, cfg.DashboardToken, tz),
+	}
 
 	errCh := make(chan error, 2)
 	go func() {
