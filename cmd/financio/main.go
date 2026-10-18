@@ -124,6 +124,12 @@ func run() error {
 				return
 			}
 			m := u.Message
+			// From is nil on some updates (channel auto-forwards, anonymous
+			// group admins); there is no allowlist identity to check, so skip.
+			if m.From == nil {
+				slog.Warn("skipping update with no sender", "update_id", u.UpdateID)
+				return
+			}
 			chatID, userID := m.Chat.ID, m.From.ID
 			msg := botMessage(m)
 			updateID := int64(u.UpdateID)
