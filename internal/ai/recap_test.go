@@ -95,3 +95,17 @@ func TestParseRecapFilterMalformed(t *testing.T) {
 		t.Fatal("expected decode error")
 	}
 }
+
+func TestParseRecapFilterDuplicateCheck(t *testing.T) {
+	srv := recapServer(t, `{"is_recap_request":true,"date_from":"2026-10-01","date_to":"2026-10-31","categories":[],"language":"EN"}`)
+	defer srv.Close()
+
+	f, err := newTestClient(srv.URL).ParseRecapFilter(context.Background(),
+		"check duplicate october", today, []string{"Meals"})
+	if err != nil {
+		t.Fatalf("ParseRecapFilter: %v", err)
+	}
+	if !f.IsRecapRequest || f.DateFrom != "2026-10-01" || f.DateTo != "2026-10-31" {
+		t.Errorf("filter = %+v", f)
+	}
+}

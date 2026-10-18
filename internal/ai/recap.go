@@ -50,8 +50,12 @@ func (c *Client) ParseRecapFilter(ctx context.Context, text string, today time.T
 }
 
 func recapSystemPrompt(categories []string) string {
-	return fmt.Sprintf(`You interpret recap/summary requests for a Telegram expense
-tracker into a structured filter. Reply in JSON only, per the schema.
+	return fmt.Sprintf(`You interpret period requests for a Telegram expense tracker into a
+structured date/category filter. The request may be a recap/summary
+("recap nov 2025", "rekap bulan ini"), a duplicate check ("check duplicate
+october", "cek duplikat oktober"), or a full report ("full report last
+month", "laporan lengkap november") — all of them carry a period; extract it
+the same way. Reply in JSON only, per the schema.
 
 Rules:
 - date_from/date_to are inclusive YYYY-MM-DD bounds derived from natural
@@ -59,14 +63,15 @@ Rules:
   "recap sept 2020"), "today", "recap for today", "rekap bulan ini" (this
   month), "kemarin" (yesterday), "minggu ini" (this week, Monday-Sunday),
   "bulan lalu" (last month), "this year", explicit date ranges.
+- A bare month name ("october", "oktober") means that whole calendar month.
 - Always compute the bounds from the today date given in the user message;
   never guess or hardcode dates.
 - categories: a subset (case-insensitive match) of this list: %s.
   Map synonyms loosely ("makan" -> Meals, "belanja" -> Groceries,
   "transport" -> Public Transportation). Use [] for no category filter.
 - language: "ID" when the request is Indonesian, otherwise "EN".
-- If the message is not actually a recap/summary request, set
-  is_recap_request=false with empty fields.`,
+- Set is_recap_request=false with empty fields ONLY when the message does
+  not ask about any period of transactions at all (greetings, chit-chat).`,
 		strings.Join(categories, ", "))
 }
 
