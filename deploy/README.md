@@ -7,13 +7,13 @@ the `getUpdates` lock). Never scale past 1, and no Service/Ingress is needed —
 > This dev machine and the TrueNAS host have no Docker daemon. The image is
 > therefore built by GitHub Actions (`.github/workflows/docker.yml`): push a tag
 > (`git tag v2.0.0 && git push --tags`) and the workflow builds, pushes to
-> `ghcr.io/rifi331/financio:<tag>`, and runs the acceptance checks (image size
+> `ghcr.io/rifi331/financio2.0:<tag>`, and runs the acceptance checks (image size
 > < 30 MB via `docker inspect --format '{{.Size}}'`, and fail-fast on missing
 > env with a clear `financio exited with error` log line). TrueNAS itself pulls
 > the image from ghcr — no docker CLI needed anywhere.
 
 If you ever have a Docker-capable machine, `make image` builds and tags
-`financio:2.0.0` + `ghcr.io/rifi331/financio:2.0.0` locally; check size with
+`financio:2.0.0` + `ghcr.io/rifi331/financio2.0:2.0.0` locally; check size with
 `docker images financio:2.0.0`.
 
 TLS to api.telegram.org works out of the box: `distroless/static-debian12` ships
@@ -24,7 +24,7 @@ its own `/healthz`) because distroless has no shell or wget.
 ## Deploy path (a) — TrueNAS Custom App via ghcr (preferred)
 
 1. Ensure the image exists: push tag `v2.0.0` and let the GitHub Actions
-   workflow build + push `ghcr.io/rifi331/financio:2.0.0`. (First time: make the
+   workflow build + push `ghcr.io/rifi331/financio2.0:2.0.0`. (First time: make the
    ghcr package public, or add a TrueNAS pull secret for `ghcr.io`.)
 2. TrueNAS UI → **Apps → Discover Apps → Install via YAML**.
 3. Paste `deploy/truenas-custom-app.yaml`.

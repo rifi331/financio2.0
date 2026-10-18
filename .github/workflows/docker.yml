@@ -1,6 +1,6 @@
 # Builds and pushes the Financio image to GitHub Container Registry.
 # The dev machine and TrueNAS host have no Docker daemon, so CI is the build
-# path: push a tag (v2.0.0) and the image lands at ghcr.io/rifi331/financio.
+# path: push a tag (v2.0.0) and the image lands at ghcr.io/rifi331/financio2.0.
 name: docker
 
 on:
@@ -8,7 +8,7 @@ on:
     tags: ["v*"]
 
 env:
-  IMAGE: ghcr.io/rifi331/financio
+  IMAGE: ghcr.io/rifi331/financio2.0
 
 jobs:
   build-push:
