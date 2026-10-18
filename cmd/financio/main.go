@@ -162,10 +162,13 @@ func run() error {
 
 func botMessage(m *tgbotapi.Message) router.Message {
 	msg := router.Message{
-		Text:           m.Text,
-		HasPhoto:       len(m.Photo) > 0,
-		DocumentName:   m.Document.FileName,
-		DocumentFileID: m.Document.FileID,
+		Text:     m.Text,
+		HasPhoto: len(m.Photo) > 0,
+	}
+	// Document is nil for anything that isn't a file upload.
+	if m.Document != nil {
+		msg.DocumentName = m.Document.FileName
+		msg.DocumentFileID = m.Document.FileID
 	}
 	if len(m.Photo) > 0 {
 		msg.PhotoFileID = m.Photo[len(m.Photo)-1].FileID // largest size last

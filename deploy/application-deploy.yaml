@@ -59,7 +59,7 @@ spec:
     spec:
       containers:
         - name: financio
-          image: ghcr.io/rifi331/financio2.0:v2.1.0
+          image: ghcr.io/rifi331/financio2.0:v2.1.1
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
