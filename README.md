@@ -51,6 +51,13 @@ curl localhost:7777/healthz
 Migrations are embedded and applied automatically at startup. Store tests are
 gated behind `FINANCIO_TEST_DSN`.
 
+## Deploy
+
+Docker image (`make image` → `financio:2.0.0`, distroless, non-root, < 30 MB) and
+three deploy paths — TrueNAS Custom App via ghcr (preferred), kubectl apply on
+k3s, or airgapped image import — see [deploy/README.md](deploy/README.md).
+Single replica only (long polling); outbound-only, no Service/Ingress.
+
 ## Repository layout
 
 `cmd/financio` (wiring) · `internal/config` · `internal/store` (pgx + migrations)

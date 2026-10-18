@@ -1,0 +1,90 @@
+# Financio 2.0 — k3s/Kubernetes manifest (PLACEHOLDERS ONLY, never real secrets).
+#
+# Real values are substituted only at apply time, e.g.:
+#   kubectl -n financio create secret generic financio-secrets \
+#     --from-literal=TELEGRAM_BOT_TOKEN=... \
+#     --from-literal=OPENAI_API_KEY=... \
+#     --from-literal=DATABASE_URL=...
+# ...or via an untracked deploy/application-deploy.local.yaml (gitignored).
+# A manifest with real secrets filled in must never be committed (BRIEF "Secrets policy").
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: financio
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: financio-secrets
+  namespace: financio
+type: Opaque
+stringData:
+  TELEGRAM_BOT_TOKEN: <TELEGRAM_BOT_TOKEN>
+  OPENAI_API_KEY: <OPENAI_API_KEY>
+  DATABASE_URL: <DATABASE_URL>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: financio-config
+  namespace: financio
+data:
+  OPENAI_MODEL: gpt-4o-mini
+  DISPLAY_TZ: Asia/Kuala_Lumpur
+  DEFAULT_CURRENCY: MYR
+  ALLOWED_USERS: <COMMA_SEPARATED_NAMES>
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: financio
+  namespace: financio
+  labels:
+    app: financio
+spec:
+  # HARD requirement: long polling holds the getUpdates lock; never scale past 1.
+  replicas: 1
+  strategy:
+    type: Recreate # never two pods during rollout
+  selector:
+    matchLabels:
+      app: financio
+  template:
+    metadata:
+      labels:
+        app: financio
+    spec:
+      containers:
+        - name: financio
+          image: ghcr.io/rifi331/financio:2.0.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: financio-secrets
+            - configMapRef:
+                name: financio-config
+          ports:
+            - name: health
+              containerPort: 7777
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      # No Service, no Ingress: the bot is outbound-only (long polling);
+      # /healthz is for the kubelet only.

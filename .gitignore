@@ -2,3 +2,4 @@ dist/
 .env
 financio
 financio.exe
+deploy/application-deploy.local.yaml

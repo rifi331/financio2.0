@@ -11,19 +11,25 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
 | 2 | `prompts/2-bot-and-entry.md` | Telegram polling, allowlist auth, router, AI text-entry flow | Done | 2026-10-18 | All items done. Dispatcher lives in new `internal/bot` package. |
 | 3 | `prompts/3-delete-and-recap.md` | Delete + recap flows | Done | 2026-10-18 | All items done. |
 | 4 | `prompts/4-receipts-and-hardening.md` | Photo/PDF receipts, /start & /help, resilience | Done | 2026-10-18 | All items done. See session log below. |
-| 5 | `prompts/5-deploy.md` | Docker image, TrueNAS custom-app YAML + k3s manifest, final sweep | Pending | | |
+| 5 | `prompts/5-deploy.md` | Docker image, TrueNAS custom-app YAML + k3s manifest, final sweep | Done | 2026-10-18 | All items done; image build moved to GitHub Actions (no Docker on dev machine or TrueNAS). See session log below. |
 | 6 | `prompts/6-optional-import-v1.md` | Optional: import 1.0 n8n-era data | Pending | | |
 | — | `verification.md` | End-to-end manual verification checklist | Pending | | |
 
 ## Deployment TODO — TrueNAS custom app (manual steps, after session 5)
 
-My deploy path of choice: TrueNAS SCALE **Custom App** (Apps → Discover Apps → Install via
-YAML) using `deploy/truenas-custom-app.yaml`, with the image pulled from GitHub Container
-Registry (ghcr.io). Session 5 refreshes this checklist to match the final artifacts.
+My deploy path of choice: TrueNAS SCALE **Custom App** (Apps → Discover Apps →
+Install via YAML) using `deploy/truenas-custom-app.yaml`, with the image
+`ghcr.io/rifi331/financio:2.0.0` pulled from GitHub Container Registry. Neither
+this dev machine nor the TrueNAS host runs Docker, so the image is built by
+GitHub Actions on tag push (`.github/workflows/docker.yml`) — that workflow also
+performs the acceptance checks (size < 30 MB, fail-fast on missing env).
 
 - [ ] Rotate the Telegram bot token and OpenAI key (both exposed in the old `financio.yaml`)
 - [ ] Prepare the Postgres database (TrueNAS app) and note the `DATABASE_URL`
-- [ ] Build + push the image to ghcr: `make image` → `docker push ghcr.io/rifi331/financio:2.0.0`
+- [ ] Push the tag to build/publish the image: `git push origin main --tags`
+      (tag `v2.0.0` already exists; verify the Actions run succeeded and the
+      package exists at ghcr.io/rifi331/financio:2.0.0 — make it public once,
+      or prepare a ghcr pull secret for TrueNAS)
 - [ ] TrueNAS UI → Apps → Discover Apps → Install via YAML → paste `deploy/truenas-custom-app.yaml`
 - [ ] Fill the env placeholders in the UI: `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`,
       `DATABASE_URL`, `ALLOWED_USERS` (never commit filled values)
@@ -136,3 +142,34 @@ Registry (ghcr.io). Session 5 refreshes this checklist to match the final artifa
   router /start|/help classification; ai vision request shape + prompt-rule fixtures;
   receipt formatter incl. multi-currency totals.
 - Not manually verified against a real bot token / real OpenAI calls (none provided).
+
+### Session 5 — 2026-10-18
+- `Dockerfile`: multi-stage golang:1.24-alpine → distroless/static-debian12:nonroot,
+  CGO_ENABLED=0, -trimpath -ldflags "-s -w" + version/commit/date build args,
+  nonroot user, EXPOSE 7777. Distroless static ships ca-certs + tzdata, so TLS to
+  api.telegram.org and time.LoadLocation work unmodified (noted the zoneinfo
+  fallback in a comment).
+- Distroless has no shell/wget, so the container healthcheck can't use wget:
+  added a `financio healthcheck` subcommand to main.go that self-probes
+  /healthz (HEALTH_PORT-aware). Dockerfile HEALTHCHECK and the compose
+  healthcheck both use it.
+- `deploy/application-deploy.yaml`: Namespace/Secret/ConfigMap/Deployment with
+  placeholders only; replicas 1 + Recreate strategy (long polling), envFrom,
+  liveness on /healthz:7777, 25m/64Mi → 250m/192Mi, readOnlyRootFilesystem,
+  runAsNonRoot, no Service/Ingress. `deploy/application-deploy.local.yaml`
+  gitignored.
+- `deploy/truenas-custom-app.yaml`: compose-style Custom App def (single service,
+  restart unless-stopped, ghcr image, placeholders, header comment with the
+  paste-in location). Validated with `docker compose ... config` ✅.
+- `deploy/README.md`: three deploy paths + push-to-ghcr + post-deploy checks.
+  Deviation: **no Docker on the dev machine or the TrueNAS host**, so the image
+  build moved to GitHub Actions (`.github/workflows/docker.yml`): builds and
+  pushes on tag push, and runs the acceptance checks itself (size < 30 MB,
+  fail-fast on missing env). `kubectl --dry-run=client` needs a live cluster
+  (no cluster configured here); the manifest was validated by full YAML parse
+  of all four documents instead — run the dry-run on a machine with cluster
+  access before applying.
+- Makefile: `image` target (tags financio:2.0.0 + ghcr.io/rifi331/financio:2.0.0).
+- Final sweep: `go vet` clean, `go test ./...` all ok (`-race` not runnable on
+  this host — needs cgo/gcc), `gofmt -l` empty after formatting two test files,
+  `go build` clean. README run section updated with a Deploy pointer.
