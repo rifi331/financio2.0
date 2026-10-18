@@ -8,7 +8,7 @@
 # getUpdates lock — never scale past 1 replica.
 services:
   financio:
-    image: ghcr.io/rifi331/financio2.0:v2.1.1
+    image: ghcr.io/rifi331/financio2.0:v2.1.2
     restart: unless-stopped
     environment:
       # --- required (fill in the TrueNAS UI) ---

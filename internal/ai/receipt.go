@@ -72,13 +72,19 @@ func (c *Client) parseReceipt(ctx context.Context, msgs []Message) ([]ParsedEntr
 
 func photoSystemPrompt(in ReceiptInput) string {
 	return fmt.Sprintf(`You are a receipt-parsing agent for a Telegram expense tracker.
-You receive a photo of a receipt or document. Decide:
+You receive a photo of a receipt or document. Classify it by one test:
+does the document show ONE grand total that covers everything on it?
 
-A) A single receipt (store receipt, restaurant bill): return exactly ONE
-   transaction whose amount is the receipt total; list the individual line
-   items in details (item, amount, qty, location).
-B) A statement or list (bank statement, e-wallet history): return one
-   transaction per row, each with its own date from the document.
+A) Grand total present (store receipt, restaurant bill: itemized lines
+   plus a single "Total" at the bottom): return exactly ONE transaction
+   whose amount is that total; list the individual line items in details
+   (item, amount, qty, location).
+B) No grand total — the image is a list of separate, independently dated
+   transactions (transaction history screenshot, bank/e-wallet activity
+   page, spending log): return one transaction per row, each with its own
+   amount and the date shown for that row. Do NOT collapse these into a
+   single transaction and do not stop at the first row — include every
+   visible transaction row.
 
 Rules:
 - Currency: use the currency printed on the document when identifiable,
