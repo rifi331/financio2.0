@@ -43,6 +43,9 @@ type TxStore interface {
 	SetPrompt(ctx context.Context, name, template string) error
 	DeletePrompt(ctx context.Context, name string) (bool, error)
 	ListPrompts(ctx context.Context) ([]store.Prompt, error)
+	GetSysParam(ctx context.Context, key string) (string, bool, error)
+	SetSysParam(ctx context.Context, key, value string) error
+	ListSysParams(ctx context.Context) ([]store.SysParam, error)
 }
 
 // Parser is the AI extraction surface.
@@ -83,6 +86,9 @@ type Dispatcher struct {
 	defCur string
 	nowFn  func() time.Time
 	log    *slog.Logger
+	// PerMessageTimeout overrides the compiled perMessageTimeout when > 0
+	// (set from the message_timeout_seconds sysparam at startup).
+	PerMessageTimeout time.Duration
 }
 
 // NewDispatcher wires the dispatcher. nowFn is injectable for tests (nil -> time.Now).
@@ -94,8 +100,9 @@ func NewDispatcher(s TxStore, a *auth.Authorizer, p Parser, tg Sender, down Down
 		nowFn: nowFn, log: slog.Default()}
 }
 
-// perMessageTimeout bounds the total processing time of one update.
-const perMessageTimeout = 90 * time.Second
+// perMessageTimeout bounds the total processing time of one update. Generous:
+// receipt/PDF parses make up to 3 OpenAI attempts of up to 80s each.
+const perMessageTimeout = 300 * time.Second
 
 // Handle processes one raw Telegram update end to end. It never panics up to
 // the caller (one bad message must not kill the poll loop) and always logs
@@ -116,7 +123,7 @@ func (d *Dispatcher) Handle(ctx context.Context, updateID, chatID, userID int64,
 			"outcome", outcome)
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, perMessageTimeout)
+	ctx, cancel := context.WithTimeout(ctx, d.messageTimeout())
 	defer cancel()
 
 	outcome = d.handle(ctx, updateID, chatID, userID, firstName, lastName, msg)
@@ -145,6 +152,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleReport(ctx, chatID, user, intent.Text)
 	case router.IntentPrompt:
 		outcome = d.handlePrompt(ctx, chatID, user, intent.Text)
+	case router.IntentParam:
+		outcome = d.handleParam(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:

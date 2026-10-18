@@ -42,7 +42,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.OpenAIModel != "gpt-4o-mini" || cfg.DisplayTZ != "Asia/Kuala_Lumpur" ||
+	if cfg.OpenAIModel != "gpt-6-luna" || cfg.DisplayTZ != "Asia/Kuala_Lumpur" ||
 		cfg.DefaultCurrency != "MYR" || cfg.HealthPort != "7777" || cfg.LogLevel != "info" {
 		t.Errorf("defaults not applied: %+v", cfg)
 	}

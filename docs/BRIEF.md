@@ -98,7 +98,7 @@ CREATE INDEX idx_txn_user_date ON transaction_log (user_id, entry_date);
 TELEGRAM_BOT_TOKEN   (required)
 OPENAI_API_KEY       (required)
 DATABASE_URL         (required, e.g. postgres://user:pass@host:5432/financio)
-OPENAI_MODEL         (default gpt-4o-mini)
+OPENAI_MODEL         (default gpt-6-luna; overridable via sysparam openai_model)
 ALLOWED_USERS        (required, comma-separated display names: "Rifi Anggriawan,Jane Doe")
 DISPLAY_TZ           (default Asia/Kuala_Lumpur)
 DEFAULT_CURRENCY     (default MYR)

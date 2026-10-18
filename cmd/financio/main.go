@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -96,10 +97,31 @@ func run() error {
 		return err
 	}
 	aiClient := ai.NewClient("", cfg.OpenAIAPIKey, cfg.OpenAIModel)
-
 	st := store.New(pool)
+
+	// Runtime tunables from the sysparam table (env/config is the fallback).
+	if v, ok, err := st.GetSysParam(ctx, "openai_model"); err == nil && ok && v != "" {
+		aiClient.SetModel(v)
+	}
+	attemptTimeout := 80 * time.Second
+	if v, ok, err := st.GetSysParam(ctx, "ai_attempt_timeout_seconds"); err == nil && ok {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			attemptTimeout = time.Duration(n) * time.Second
+		}
+	}
+	aiClient.AttemptTimeout = attemptTimeout
+
+	// store already created above for sysparams
 	authorizer := auth.New(st, cfg.AllowedUsers)
 	dispatcher := bot.NewDispatcher(st, authorizer, aiClient, tg, tg, tz, cfg.DefaultCurrency, nil)
+	if v, ok, err := st.GetSysParam(ctx, "message_timeout_seconds"); err == nil && ok {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			dispatcher.PerMessageTimeout = time.Duration(n) * time.Second
+		}
+	}
+	logger.Info("runtime params", "openai_model", aiClient.Model,
+		"ai_attempt_timeout", attemptTimeout.String(),
+		"message_timeout", dispatcherMsgTimeout(dispatcher))
 
 	// At most 4 messages processed concurrently, per-chat order preserved.
 	pool4 := bot.NewPool(4)
@@ -158,6 +180,13 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+func dispatcherMsgTimeout(d *bot.Dispatcher) string {
+	if t := d.PerMessageTimeout; t > 0 {
+		return t.String()
+	}
+	return "default(300s)"
 }
 
 func botMessage(m *tgbotapi.Message) router.Message {

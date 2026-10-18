@@ -29,7 +29,7 @@ metadata:
   name: financio-config
   namespace: financio
 data:
-  OPENAI_MODEL: gpt-4o-mini
+  OPENAI_MODEL: gpt-6-luna
   DISPLAY_TZ: Asia/Kuala_Lumpur
   DEFAULT_CURRENCY: MYR
   ALLOWED_USERS: <COMMA_SEPARATED_NAMES>
@@ -59,7 +59,7 @@ spec:
     spec:
       containers:
         - name: financio
-          image: ghcr.io/rifi331/financio2.0:v2.4.0
+          image: ghcr.io/rifi331/financio2.0:v2.5.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:

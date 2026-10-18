@@ -28,7 +28,7 @@ func Load() (*Config, error) {
 		TelegramBotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		OpenAIModel:      getenvDefault("OPENAI_MODEL", "gpt-4o-mini"),
+		OpenAIModel:      getenvDefault("OPENAI_MODEL", "gpt-6-luna"),
 		DisplayTZ:        getenvDefault("DISPLAY_TZ", "Asia/Kuala_Lumpur"),
 		DefaultCurrency:  getenvDefault("DEFAULT_CURRENCY", "MYR"),
 		HealthPort:       getenvDefault("HEALTH_PORT", "7777"),

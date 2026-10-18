@@ -23,6 +23,7 @@ type fakeStore struct {
 	lastFilter   *store.TxnFilter
 	dupGroups    []store.DuplicateGroup
 	prompts      map[string]string
+	sysparams    map[string]string
 	lastDupRange *[2]time.Time
 }
 
@@ -49,6 +50,27 @@ func (f *fakeStore) DeletePrompt(_ context.Context, name string) (bool, error) {
 	}
 	delete(f.prompts, name)
 	return true, nil
+}
+
+func (f *fakeStore) GetSysParam(_ context.Context, key string) (string, bool, error) {
+	v, ok := f.sysparams[key]
+	return v, ok, nil
+}
+
+func (f *fakeStore) SetSysParam(_ context.Context, key, value string) error {
+	if f.sysparams == nil {
+		f.sysparams = map[string]string{}
+	}
+	f.sysparams[key] = value
+	return nil
+}
+
+func (f *fakeStore) ListSysParams(_ context.Context) ([]store.SysParam, error) {
+	var out []store.SysParam
+	for k, v := range f.sysparams {
+		out = append(out, store.SysParam{Key: k, Value: v})
+	}
+	return out, nil
 }
 
 func (f *fakeStore) ListPrompts(_ context.Context) ([]store.Prompt, error) {

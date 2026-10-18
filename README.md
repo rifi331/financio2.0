@@ -34,7 +34,7 @@ Replaces the n8n "Financio postgres" automation.
 | `OPENAI_API_KEY` | ✅ | | |
 | `DATABASE_URL` | ✅ | | `postgres://user:pass@host:5432/financio` |
 | `ALLOWED_USERS` | ✅ | | comma-separated display names, e.g. `Rifi Anggriawan` |
-| `OPENAI_MODEL` | | `gpt-4o-mini` | |
+| `OPENAI_MODEL` | | `gpt-6-luna` | |
 | `DISPLAY_TZ` | | `Asia/Kuala_Lumpur` | |
 | `DEFAULT_CURRENCY` | | `MYR` | seeded: MYR, IDR, USD, SGD |
 | `HEALTH_PORT` | | `7777` | `/healthz` |

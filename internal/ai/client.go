@@ -60,16 +60,25 @@ type Client struct {
 	APIKey  string
 	Model   string
 	HTTP    *http.Client
-	log     *slog.Logger
+	// AttemptTimeout bounds one chat-completions attempt; 0 means 30s.
+	AttemptTimeout time.Duration
+	log            *slog.Logger
 }
 
-// NewClient creates a client for the given model (default gpt-4o-mini).
+// SetModel switches the model used by subsequent requests (sysparam-driven).
+func (c *Client) SetModel(m string) {
+	if m = strings.TrimSpace(m); m != "" {
+		c.Model = m
+	}
+}
+
+// NewClient creates a client for the given model (default gpt-6-luna).
 func NewClient(baseURL, apiKey, model string) *Client {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
 	if model == "" {
-		model = "gpt-4o-mini"
+		model = "gpt-6-luna"
 	}
 	return &Client{
 		BaseURL: strings.TrimSuffix(baseURL, "/"),
@@ -129,7 +138,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
 }
 
 func (c *Client) chatOnce(ctx context.Context, body []byte) (content string, retryable bool, err error) {
-	attemptCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// Large statement PDFs produce long prompts; the default 30s is too tight.
+	timeout := c.AttemptTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	attemptCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(attemptCtx, http.MethodPost,
