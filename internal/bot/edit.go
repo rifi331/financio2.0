@@ -45,7 +45,7 @@ func (d *Dispatcher) handleEdit(ctx context.Context, chatID int64, user store.Us
 	if err != nil {
 		currencies = nil
 	}
-	reply := d.withBudgetLines(ctx, formatConfirmation(txn, currencies, firstName(user.DisplayName), "EN"), []store.Transaction{txn})
+	reply := d.withBudgetLines(ctx, user, formatConfirmation(txn, currencies, firstName(user.DisplayName), "EN"), []store.Transaction{txn})
 	d.reply(ctx, chatID, "✏️ updated:\n"+reply)
 	return "edited"
 }

@@ -16,19 +16,24 @@ import (
 // --- fakes ---
 
 type fakeStore struct {
-	inserted     []store.NewTransaction
-	rows         []store.Transaction
-	nextID       int64
-	unauthorized bool // when true, no user is known and EnsureUser records the attempt
-	ensured      []int64
-	lastFilter   *store.TxnFilter
-	dupGroups    []store.DuplicateGroup
-	prompts      map[string]string
-	sysparams    map[string]string
-	budgets      map[[2]string]string
-	lastPatch    *store.TxnPatch
-	recurring    []store.Recurring
-	lastDupRange *[2]time.Time
+	inserted         []store.NewTransaction
+	rows             []store.Transaction
+	nextID           int64
+	unauthorized     bool // when true, no user is known and EnsureUser records the attempt
+	ensured          []int64
+	lastFilter       *store.TxnFilter
+	dupGroups        []store.DuplicateGroup
+	prompts          map[string]string
+	sysparams        map[string]string
+	budgets          map[[2]string]string
+	lastPatch        *store.TxnPatch
+	recurring        []store.Recurring
+	userGroup        int64
+	groups           []store.GroupWithMembers
+	lastBudgetGroup  int64
+	lastSpendGroup   int64
+	budgetGroupOwner map[[2]string]int64
+	lastDupRange     *[2]time.Time
 }
 
 func (f *fakeStore) ListActiveCategories(context.Context) ([]string, error) {
@@ -54,42 +59,6 @@ func (f *fakeStore) DeletePrompt(_ context.Context, name string) (bool, error) {
 	}
 	delete(f.prompts, name)
 	return true, nil
-}
-
-func (f *fakeStore) SetBudget(_ context.Context, cat, code, limit string) error {
-	if f.budgets == nil {
-		f.budgets = map[[2]string]string{}
-	}
-	f.budgets[[2]string{cat, code}] = limit
-	return nil
-}
-
-func (f *fakeStore) DeleteBudget(_ context.Context, cat, code string) (bool, error) {
-	k := [2]string{cat, code}
-	if _, ok := f.budgets[k]; !ok {
-		return false, nil
-	}
-	delete(f.budgets, k)
-	return true, nil
-}
-
-func (f *fakeStore) ListBudgets(_ context.Context) ([]store.Budget, error) {
-	var out []store.Budget
-	for k, v := range f.budgets {
-		out = append(out, store.Budget{CategoryName: k[0], CurrencyCode: k[1], MonthlyLimit: v})
-	}
-	return out, nil
-}
-
-func (f *fakeStore) MonthCategorySpend(_ context.Context, cat, code string, t time.Time) (string, error) {
-	total := 0.0
-	for _, r := range f.rows {
-		if r.CategoryName == cat && r.CurrencyCode == code && r.Direction == "expense" {
-			amt, _ := strconv.ParseFloat(r.TotalAmount, 64)
-			total += amt
-		}
-	}
-	return strconv.FormatFloat(total, 'f', 2, 64), nil
 }
 
 func (f *fakeStore) UpdateTransactionFields(_ context.Context, id, userID int64, p store.TxnPatch) (store.Transaction, bool, error) {
@@ -553,4 +522,91 @@ func (f *fakeStore) MarkRecurringRun(_ context.Context, id int64, day time.Time)
 		}
 	}
 	return nil
+}
+
+func (f *fakeStore) SetBudget(_ context.Context, groupID int64, cat, code, limit string) error {
+	if f.budgets == nil {
+		f.budgets = map[[2]string]string{}
+	}
+	f.lastBudgetGroup = groupID
+	f.budgets[[2]string{cat, code}] = limit
+	return nil
+}
+
+func (f *fakeStore) DeleteBudget(_ context.Context, groupID int64, cat, code string) (bool, error) {
+	k := [2]string{cat, code}
+	if _, ok := f.budgets[k]; !ok {
+		return false, nil
+	}
+	f.lastBudgetGroup = groupID
+	delete(f.budgets, k)
+	return true, nil
+}
+
+func (f *fakeStore) ListBudgets(_ context.Context, groupID int64) ([]store.Budget, error) {
+	var out []store.Budget
+	for k, v := range f.budgets {
+		if groupID > 0 && f.budgetGroupOwner[k] != 0 && f.budgetGroupOwner[k] != groupID {
+			continue
+		}
+		out = append(out, store.Budget{BudgetGroupID: f.budgetGroupOwner[k], CategoryName: k[0], CurrencyCode: k[1], MonthlyLimit: v})
+	}
+	return out, nil
+}
+
+func (f *fakeStore) MonthCategorySpend(_ context.Context, groupID int64, cat, code string, t time.Time) (string, error) {
+	f.lastSpendGroup = groupID
+	total := 0.0
+	for _, r := range f.rows {
+		if r.CategoryName == cat && r.CurrencyCode == code && r.Direction == "expense" {
+			amt, _ := strconv.ParseFloat(r.TotalAmount, 64)
+			total += amt
+		}
+	}
+	return strconv.FormatFloat(total, 'f', 2, 64), nil
+}
+
+func (f *fakeStore) ListGroupsWithMembers(_ context.Context) ([]store.GroupWithMembers, error) {
+	return f.groups, nil
+}
+
+func (f *fakeStore) SetUserGroup(_ context.Context, telegramID int64, groupName string) error {
+	if f.groups == nil {
+		f.groups = []store.GroupWithMembers{{GroupID: 1, Name: groupName, Members: []store.User{{ID: telegramID}}}}
+		return nil
+	}
+	for i := range f.groups {
+		if f.groups[i].Name == groupName {
+			f.groups[i].Members = append(f.groups[i].Members, store.User{ID: telegramID})
+			return nil
+		}
+	}
+	f.groups = append(f.groups, store.GroupWithMembers{GroupID: int64(len(f.groups) + 1), Name: groupName, Members: []store.User{{ID: telegramID}}})
+	return nil
+}
+
+func (f *fakeStore) UserGroupID(_ context.Context, telegramID int64) (int64, error) {
+	if f.userGroup == 0 {
+		return 1, nil // tests default everyone into group 1 ("Family")
+	}
+	return f.userGroup, nil
+}
+
+func (f *fakeStore) EnsureUserGroup(_ context.Context, telegramID int64, displayName string) error {
+	return nil
+}
+
+func (f *fakeStore) GroupMemberIDs(_ context.Context, groupID int64) ([]int64, error) {
+	var ids []int64
+	for _, g := range f.groups {
+		if g.GroupID == groupID {
+			for _, m := range g.Members {
+				ids = append(ids, m.ID)
+			}
+		}
+	}
+	if ids == nil {
+		ids = []int64{55}
+	}
+	return ids, nil
 }

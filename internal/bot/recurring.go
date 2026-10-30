@@ -170,7 +170,7 @@ func (d *Dispatcher) RunDue(ctx context.Context, now time.Time) int {
 		if err := d.store.MarkRecurringRun(ctx, r.ID, now); err != nil {
 			d.log.Error("mark recurring run failed", "err", err, "recurring_id", r.ID)
 		}
-		reply := d.withBudgetLines(ctx, formatConfirmation(txn, currencies, firstName(user.DisplayName), "EN"), []store.Transaction{txn})
+		reply := d.withBudgetLines(ctx, user, formatConfirmation(txn, currencies, firstName(user.DisplayName), "EN"), []store.Transaction{txn})
 		_ = d.tg.SendMessages(r.UserID, []string{"recurring:\n" + reply})
 		inserted++
 	}

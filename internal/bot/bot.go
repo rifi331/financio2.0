@@ -52,10 +52,15 @@ type TxStore interface {
 	GetSysParam(ctx context.Context, key string) (string, bool, error)
 	SetSysParam(ctx context.Context, key, value string) error
 	ListSysParams(ctx context.Context) ([]store.SysParam, error)
-	SetBudget(ctx context.Context, categoryName, currencyCode, limit string) error
-	DeleteBudget(ctx context.Context, categoryName, currencyCode string) (bool, error)
-	ListBudgets(ctx context.Context) ([]store.Budget, error)
-	MonthCategorySpend(ctx context.Context, categoryName, currencyCode string, t time.Time) (string, error)
+	SetBudget(ctx context.Context, groupID int64, categoryName, currencyCode, limit string) error
+	DeleteBudget(ctx context.Context, groupID int64, categoryName, currencyCode string) (bool, error)
+	ListBudgets(ctx context.Context, groupID int64) ([]store.Budget, error)
+	MonthCategorySpend(ctx context.Context, groupID int64, categoryName, currencyCode string, t time.Time) (string, error)
+	ListGroupsWithMembers(ctx context.Context) ([]store.GroupWithMembers, error)
+	SetUserGroup(ctx context.Context, telegramID int64, groupName string) error
+	UserGroupID(ctx context.Context, telegramID int64) (int64, error)
+	EnsureUserGroup(ctx context.Context, telegramID int64, displayName string) error
+	GroupMemberIDs(ctx context.Context, groupID int64) ([]int64, error)
 }
 
 // Parser is the AI extraction surface.
@@ -102,6 +107,8 @@ type Dispatcher struct {
 	// history is the per-chat conversation ring replayed to the model on
 	// text entries (nil-safe).
 	history *History
+	// ensuredGroups remembers users already assigned a budget group.
+	ensuredGroups map[int64]bool
 }
 
 // NewDispatcher wires the dispatcher. nowFn is injectable for tests (nil -> time.Now).
@@ -110,7 +117,7 @@ func NewDispatcher(s TxStore, a *auth.Authorizer, p Parser, tg Sender, down Down
 		nowFn = time.Now
 	}
 	return &Dispatcher{store: s, auth: a, ai: p, tg: tg, down: down, tz: tz, defCur: defaultCurrency,
-		nowFn: nowFn, log: slog.Default(), history: NewHistory(10)}
+		nowFn: nowFn, log: slog.Default(), history: NewHistory(10), ensuredGroups: map[int64]bool{}}
 }
 
 // perMessageTimeout bounds the total processing time of one update. Generous:
@@ -152,6 +159,13 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 	if !ok {
 		return // dropped silently; never reply
 	}
+	if !d.ensuredGroups[user.ID] {
+		if err := d.store.EnsureUserGroup(ctx, user.ID, user.DisplayName); err == nil {
+			d.ensuredGroups[user.ID] = true
+		} else {
+			d.log.Warn("ensure user group failed", "err", err, "user_id", user.ID)
+		}
+	}
 
 	intent := router.Classify(msg)
 	switch intent.Kind {
@@ -173,6 +187,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleBudget(ctx, chatID, user, intent.Text)
 	case router.IntentRecurring:
 		outcome = d.handleRecurring(ctx, chatID, user, intent.Text)
+	case router.IntentGroup:
+		outcome = d.handleGroup(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:
@@ -247,7 +263,7 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 		return
 	}
 
-	reply := d.withBudgetLines(ctx, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang), []store.Transaction{txn})
+	reply := d.withBudgetLines(ctx, user, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang), []store.Transaction{txn})
 	d.history.Add(chatID, text, reply)
 	d.reply(ctx, chatID, reply)
 	return "saved"
@@ -351,9 +367,9 @@ func (d *Dispatcher) insertReceiptEntries(ctx context.Context, chatID int64, use
 		d.reply(ctx, chatID, hint(lang))
 		return "no_transaction"
 	case len(txns) == 1:
-		d.reply(ctx, chatID, d.withBudgetLines(ctx, formatConfirmation(txns[0], currencies, firstName(user.DisplayName), lang), txns))
+		d.reply(ctx, chatID, d.withBudgetLines(ctx, user, formatConfirmation(txns[0], currencies, firstName(user.DisplayName), lang), txns))
 	default:
-		d.reply(ctx, chatID, d.withBudgetLines(ctx, receipt.FormatMulti(txns, currencies), txns))
+		d.reply(ctx, chatID, d.withBudgetLines(ctx, user, receipt.FormatMulti(txns, currencies), txns))
 	}
 	return "saved"
 }
@@ -456,7 +472,7 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 		return
 	}
 	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0, filter.OrderBy)
-	if bl := d.budgetRecapLines(ctx, txns); len(bl) > 0 {
+	if bl := d.budgetRecapLines(ctx, d.groupOf(ctx, user), txns); len(bl) > 0 {
 		parts = append(parts, strings.Join(bl, "\n"))
 	}
 	if err := d.tg.SendMessages(chatID, parts); err != nil {
@@ -615,7 +631,7 @@ func (d *Dispatcher) handleReport(ctx context.Context, chatID int64, user store.
 		return
 	}
 
-	budgets, err := d.store.ListBudgets(ctx)
+	budgets, err := d.store.ListBudgets(ctx, d.groupOf(ctx, user))
 	if err != nil {
 		d.log.Error("load budgets failed", "err", err)
 		budgets = nil

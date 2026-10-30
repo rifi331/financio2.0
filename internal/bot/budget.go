@@ -26,7 +26,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, chatID int64, user store.
 
 	switch sub {
 	case "list":
-		budgets, err := d.store.ListBudgets(ctx)
+		budgets, err := d.store.ListBudgets(ctx, d.groupOf(ctx, user))
 		if err != nil {
 			d.log.Error("list budgets failed", "err", err)
 			d.reply(ctx, chatID, "Failed to list budgets.")
@@ -63,7 +63,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, chatID int64, user store.
 			d.reply(ctx, chatID, "Unknown category or currency. /budget list shows valid budgets; categories come from the DB.")
 			return
 		}
-		if err := d.store.SetBudget(ctx, cat, code, strconv.FormatFloat(limit, 'f', 2, 64)); err != nil {
+		if err := d.store.SetBudget(ctx, d.groupOf(ctx, user), cat, code, strconv.FormatFloat(limit, 'f', 2, 64)); err != nil {
 			d.log.Error("set budget failed", "err", err)
 			d.reply(ctx, chatID, "Failed to save budget.")
 			return
@@ -80,7 +80,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, chatID int64, user store.
 		if len(fields) >= 4 {
 			code = strings.ToUpper(fields[3])
 		}
-		deleted, err := d.store.DeleteBudget(ctx, fields[2], code)
+		deleted, err := d.store.DeleteBudget(ctx, d.groupOf(ctx, user), fields[2], code)
 		if err != nil {
 			d.reply(ctx, chatID, "Failed to delete budget.")
 			return
@@ -126,8 +126,8 @@ func (d *Dispatcher) knownCurrency(ctx context.Context, code string) bool {
 // budgetInfoLines returns "spent/limit (pct%)" lines for every budgeted
 // category+currency touched by txns, measured over the calendar month of the
 // transaction's own entry_date (household-wide). Empty when no budgets match.
-func (d *Dispatcher) budgetInfoLines(ctx context.Context, txns []store.Transaction) []string {
-	budgets, err := d.store.ListBudgets(ctx)
+func (d *Dispatcher) budgetInfoLines(ctx context.Context, groupID int64, txns []store.Transaction) []string {
+	budgets, err := d.store.ListBudgets(ctx, groupID)
 	if err != nil || len(budgets) == 0 {
 		return nil
 	}
@@ -149,7 +149,7 @@ func (d *Dispatcher) budgetInfoLines(ctx context.Context, txns []store.Transacti
 		if !ok || t.Direction != "expense" {
 			continue
 		}
-		spent, err := d.store.MonthCategorySpend(ctx, k.cat, k.code, t.EntryDate)
+		spent, err := d.store.MonthCategorySpend(ctx, groupID, k.cat, k.code, t.EntryDate)
 		if err != nil {
 			d.log.Warn("budget spend lookup failed", "err", err, "category", k.cat)
 			continue
@@ -178,8 +178,8 @@ func budgetLine(cat, code, spent, limit string) string {
 }
 
 // withBudgetLines appends budget status lines to a confirmation reply.
-func (d *Dispatcher) withBudgetLines(ctx context.Context, reply string, txns []store.Transaction) string {
-	lines := d.budgetInfoLines(ctx, txns)
+func (d *Dispatcher) withBudgetLines(ctx context.Context, user store.User, reply string, txns []store.Transaction) string {
+	lines := d.budgetInfoLines(ctx, d.groupOf(ctx, user), txns)
 	if len(lines) == 0 {
 		return reply
 	}
@@ -188,8 +188,8 @@ func (d *Dispatcher) withBudgetLines(ctx context.Context, reply string, txns []s
 
 // budgetRecapLines computes budget status from the transactions already
 // fetched for a recap/report period (sums in memory, not per-month).
-func (d *Dispatcher) budgetRecapLines(ctx context.Context, txns []store.Transaction) []string {
-	budgets, err := d.store.ListBudgets(ctx)
+func (d *Dispatcher) budgetRecapLines(ctx context.Context, groupID int64, txns []store.Transaction) []string {
+	budgets, err := d.store.ListBudgets(ctx, groupID)
 	if err != nil || len(budgets) == 0 {
 		return nil
 	}

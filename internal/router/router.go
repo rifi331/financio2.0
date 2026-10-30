@@ -20,6 +20,7 @@ const (
 	IntentBudget
 	IntentEdit
 	IntentRecurring
+	IntentGroup
 	IntentPhoto
 	IntentPDF
 	IntentHelp
@@ -57,6 +58,8 @@ var budgetRe = regexp.MustCompile(`^/budget(@\w+)?(\s+.*)?$`)
 
 var recurringRe = regexp.MustCompile(`^/recurring(@\w+)?(\s+.*)?$`)
 
+var groupRe = regexp.MustCompile(`^/group(@\w+)?(\s+.*)?$`)
+
 var duplicateRe = regexp.MustCompile(`(?i)\b(check|cek|find|cari)\s+(for\s+)?(duplicates?|duplikat)\b`)
 
 var reportRe = regexp.MustCompile(`(?i)\b(full|complete|lengkap)\s+(report|laporan)\b|\blaporan\s+lengkap\b`)
@@ -92,6 +95,10 @@ func Classify(m Message) Intent {
 
 	if recurringRe.MatchString(strings.TrimSpace(m.Text)) {
 		return Intent{Kind: IntentRecurring, Text: m.Text}
+	}
+
+	if groupRe.MatchString(strings.TrimSpace(m.Text)) {
+		return Intent{Kind: IntentGroup, Text: m.Text}
 	}
 
 	if match := editRe.FindStringSubmatch(m.Text); match != nil {
@@ -149,6 +156,8 @@ func (k IntentKind) String() string {
 		return "edit"
 	case IntentRecurring:
 		return "recurring"
+	case IntentGroup:
+		return "group"
 	case IntentPhoto:
 		return "photo"
 	case IntentPDF:
