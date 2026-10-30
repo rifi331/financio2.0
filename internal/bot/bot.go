@@ -648,6 +648,10 @@ func (d *Dispatcher) handleDuplicate(ctx context.Context, chatID int64, user sto
 		d.reply(ctx, chatID, recapFailHint("EN"))
 		return
 	}
+	if !filter.IsRecapRequest {
+		d.reply(ctx, chatID, recapFailHint("EN"))
+		return
+	}
 	from, to, err := parseAndValidateRange(filter.DateFrom, filter.DateTo, now)
 	if err != nil {
 		d.log.Warn("duplicate range invalid", "err", err, "raw", text)

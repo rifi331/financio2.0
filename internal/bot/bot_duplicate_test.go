@@ -71,3 +71,24 @@ func TestHandleDuplicateEmpty(t *testing.T) {
 		t.Errorf("ID empty reply wrong: %q", body)
 	}
 }
+
+func TestHandleDuplicateNotRecapRequest(t *testing.T) {
+	fs := &fakeStore{}
+	fai := &fakeAI{recapResponses: map[string]ai.RecapFilter{
+		"check duplicate october": {IsRecapRequest: false, Language: "EN"},
+	}}
+	sender := &fakeSender{}
+	d := newTestDispatcher(fs, fai, sender)
+
+	out := d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate october")
+
+	if out != "error" {
+		t.Errorf("outcome = %s, want error", out)
+	}
+	if fs.lastDupRange != nil {
+		t.Error("store must not be queried when filter says not a recap request")
+	}
+	if len(sender.messages) == 0 || !strings.Contains(sender.messages[0], "couldn't process") {
+		t.Errorf("friendly hint expected: %v", sender.messages)
+	}
+}
