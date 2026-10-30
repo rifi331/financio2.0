@@ -92,3 +92,61 @@ func TestHandleDuplicateNotRecapRequest(t *testing.T) {
 		t.Errorf("friendly hint expected: %v", sender.messages)
 	}
 }
+
+func dupGroupAt(mins int, id int64, src string) store.DuplicateGroup {
+	return store.DuplicateGroup{
+		Item: "mrt", Amount: "2.50", Currency: "MYR",
+		EntryDate: time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
+		IDs:       []int64{id},
+		Rows: []store.Transaction{{
+			ID: id, Item: "mrt", CurrencyCode: "MYR", TotalAmount: "2.50",
+			EntryDate: time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
+			Source:    src,
+			CreatedAt: time.Date(2026, 10, 14, 8, mins, 0, 0, time.UTC),
+		}},
+	}
+}
+
+func TestDuplicateEnrichedRendering(t *testing.T) {
+	fs, _, sender, d := dupTestSetup(t)
+	// Accidental: two pdf rows 2 minutes apart.
+	g := dupGroupAt(0, 101, "pdf")
+	g.IDs = append(g.IDs, 102)
+	g.Rows = append(g.Rows, dupGroupAt(2, 102, "pdf").Rows[0])
+	fs.dupGroups = []store.DuplicateGroup{g}
+
+	d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate october")
+	body := strings.Join(sender.messages, "\n")
+	for _, want := range []string{"likely accidental", "#101 pdf", "#102 pdf", "08:02"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("enriched reply missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestDuplicateSameDayPairHint(t *testing.T) {
+	fs, _, sender, d := dupTestSetup(t)
+	g := dupGroupAt(8*60, 201, "text") // 08:00
+	g.IDs = append(g.IDs, 202)
+	g.Rows = append(g.Rows, dupGroupAt(10*60, 202, "text").Rows[0]) // 10:00
+	fs.dupGroups = []store.DuplicateGroup{g}
+
+	d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate october")
+	body := strings.Join(sender.messages, "\n")
+	if !strings.Contains(body, "same-day pair") {
+		t.Errorf("legit pair should hint same-day:\n%s", body)
+	}
+	if strings.Contains(body, "likely accidental") {
+		t.Error("text rows hours apart must not be flagged accidental")
+	}
+}
+
+func dupTestSetup(t *testing.T) (*fakeStore, *fakeAI, *fakeSender, *Dispatcher) {
+	t.Helper()
+	fs := &fakeStore{}
+	fai := &fakeAI{recapResponses: map[string]ai.RecapFilter{
+		"check duplicate october": {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
+	}}
+	sender := &fakeSender{}
+	return fs, fai, sender, newTestDispatcher(fs, fai, sender)
+}

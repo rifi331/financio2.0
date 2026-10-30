@@ -332,39 +332,56 @@ func (s *Store) ListDashboardTransactions(ctx context.Context, f DashboardFilter
 }
 
 // DuplicateGroup is a set of transactions that share item + amount + currency
-// + date — likely accidental double entries.
+// + date — possibly accidental double entries (legit pairs exist: round
+// trips, same-price groceries). Rows carry per-row context for judgment.
 type DuplicateGroup struct {
 	Item      string
 	Amount    string // NUMERIC as text
 	Currency  string
 	EntryDate time.Time
 	IDs       []int64
+	Rows      []Transaction
 }
 
 // ListDuplicateGroups returns groups of same-user transactions within
 // [from, to) that share item, total_amount, currency and entry_date, where
-// the group has more than one member. Ordered by date.
+// the group has more than one member. Ordered by date; Rows carry per-row
+// context (source, created_at) for legit-vs-accidental judgment.
 func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]DuplicateGroup, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT t.item, t.total_amount::text, t.currency_code, t.entry_date,
-			array_agg(t.id ORDER BY t.id)
+		SELECT t.id, t.user_id, t.item, t.category_id, c.name,
+			t.currency_code, t.total_amount::text, t.direction, t.entry_date,
+			t.source, COALESCE(t.raw_message, ''), t.created_at
 		FROM transaction_log t
+		JOIN category c ON c.id = t.category_id
 		WHERE t.user_id = $1 AND t.entry_date >= $2 AND t.entry_date < $3
-		GROUP BY t.item, t.total_amount, t.currency_code, t.entry_date
-		HAVING count(*) > 1
-		ORDER BY t.entry_date, t.item`, userID, from, to)
+		  AND count(*) OVER (PARTITION BY t.item, t.total_amount, t.currency_code, t.entry_date) > 1
+		ORDER BY t.entry_date, t.id`, userID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("list duplicate groups: %w", err)
 	}
 	defer rows.Close()
 
-	var out []DuplicateGroup
+	byKey := map[string]*DuplicateGroup{}
+	var order []string
 	for rows.Next() {
-		var g DuplicateGroup
-		if err := rows.Scan(&g.Item, &g.Amount, &g.Currency, &g.EntryDate, &g.IDs); err != nil {
-			return nil, fmt.Errorf("scan duplicate group: %w", err)
+		t, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan duplicate row: %w", err)
 		}
-		out = append(out, g)
+		key := t.Item + "|" + t.TotalAmount + "|" + t.CurrencyCode + "|" + t.EntryDate.Format("2006-01-02")
+		g, ok := byKey[key]
+		if !ok {
+			g = &DuplicateGroup{Item: t.Item, Amount: t.TotalAmount, Currency: t.CurrencyCode, EntryDate: t.EntryDate}
+			byKey[key] = g
+			order = append(order, key)
+		}
+		g.IDs = append(g.IDs, t.ID)
+		g.Rows = append(g.Rows, t)
 	}
-	return out, rows.Err()
+	out := make([]DuplicateGroup, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
+	}
+	return out, nil
 }

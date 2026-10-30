@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rifi331/financio/internal/recap"
 	"github.com/rifi331/financio/internal/store"
@@ -219,4 +220,29 @@ func (d *Dispatcher) budgetRecapLines(ctx context.Context, txns []store.Transact
 		}
 	}
 	return lines
+}
+
+// dupHint triages a duplicate group: "likely accidental" when rows share a
+// non-text source or were created within 5 minutes (re-parse/double-tap
+// signature); "same-day pair" otherwise (common for transit round trips).
+// Hints inform judgment — nothing is ever auto-deleted.
+func dupHint(g store.DuplicateGroup) string {
+	if len(g.Rows) < 2 {
+		return ""
+	}
+	sameNonText := true
+	for _, r := range g.Rows {
+		if r.Source == "text" {
+			sameNonText = false
+		}
+	}
+	for i := 1; i < len(g.Rows); i++ {
+		if g.Rows[i].CreatedAt.Sub(g.Rows[i-1].CreatedAt) <= 5*time.Minute &&
+			g.Rows[i].CreatedAt.Sub(g.Rows[i-1].CreatedAt) >= 0 {
+			if sameNonText || g.Rows[i].CreatedAt.Sub(g.Rows[i-1].CreatedAt) <= 5*time.Minute {
+				return "⚠️ likely accidental"
+			}
+		}
+	}
+	return "ℹ️ same-day pair"
 }
