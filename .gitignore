@@ -6,3 +6,7 @@ deploy/application-deploy.local.yaml
 
 # local notes, never commit
 migrations/token.txt
+.zcode/plans/
+.zcode/tmp/
+.zcode/tmp*
+.superpowers/
