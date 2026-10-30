@@ -95,3 +95,36 @@ func (s *Store) MonthCategorySpend(ctx context.Context, groupID int64, categoryN
 	}
 	return sum, err
 }
+
+// BudgetAlertState carries the month marker for dedup.
+type BudgetAlertState struct {
+	BudgetGroupID  int64
+	CategoryName   string
+	CurrencyCode   string
+	LastAlertMonth string
+}
+
+// BudgetNeedsAlert reports whether this budget has already alerted in month
+// ("2026-10").
+func (s *Store) BudgetNeedsAlert(ctx context.Context, groupID int64, catName, code, month string) (bool, error) {
+	var m *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT b.last_alert_month FROM budget b
+		JOIN category c ON c.id = b.category_id
+		WHERE c.name = $1 AND b.currency_code = $2 AND b.budget_group_id = $3`,
+		catName, code, groupID).Scan(&m)
+	if err != nil {
+		return false, err
+	}
+	return m == nil || *m != month, nil
+}
+
+// MarkBudgetAlert records that this budget alerted in month.
+func (s *Store) MarkBudgetAlert(ctx context.Context, groupID int64, catName, code, month string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE budget SET last_alert_month = $4
+		WHERE budget_group_id = $3 AND currency_code = $2
+		  AND category_id = (SELECT id FROM category WHERE name = $1)`,
+		catName, code, groupID, month)
+	return err
+}

@@ -32,6 +32,7 @@ type fakeStore struct {
 	groups           []store.GroupWithMembers
 	lastBudgetGroup  int64
 	lastSpendGroup   int64
+	alerted          map[string]bool
 	budgetGroupOwner map[[2]string]int64
 	lastDupRange     *[2]time.Time
 }
@@ -609,4 +610,16 @@ func (f *fakeStore) GroupMemberIDs(_ context.Context, groupID int64) ([]int64, e
 		ids = []int64{55}
 	}
 	return ids, nil
+}
+
+func (f *fakeStore) BudgetNeedsAlert(_ context.Context, groupID int64, cat, code, month string) (bool, error) {
+	return !f.alerted[fmt.Sprint(groupID)+"|"+cat+"|"+code+"|"+month], nil
+}
+
+func (f *fakeStore) MarkBudgetAlert(_ context.Context, groupID int64, cat, code, month string) error {
+	if f.alerted == nil {
+		f.alerted = map[string]bool{}
+	}
+	f.alerted[fmt.Sprint(groupID)+"|"+cat+"|"+code+"|"+month] = true
+	return nil
 }

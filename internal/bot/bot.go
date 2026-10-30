@@ -61,6 +61,8 @@ type TxStore interface {
 	UserGroupID(ctx context.Context, telegramID int64) (int64, error)
 	EnsureUserGroup(ctx context.Context, telegramID int64, displayName string) error
 	GroupMemberIDs(ctx context.Context, groupID int64) ([]int64, error)
+	BudgetNeedsAlert(ctx context.Context, groupID int64, catName, code, month string) (bool, error)
+	MarkBudgetAlert(ctx context.Context, groupID int64, catName, code, month string) error
 }
 
 // Parser is the AI extraction surface.

@@ -140,6 +140,35 @@ func run() error {
 		}
 	}()
 
+	// Daily maintenance: recurring inserts + budget alerts. Hourly tick with
+	// month/day guards makes it effectively daily; one startup pass offset by
+	// a minute so polling settles first.
+	go func() {
+		time.Sleep(time.Minute)
+		run := func() {
+			rctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+			now := time.Now().In(tz)
+			if n := dispatcher.RunDue(rctx, now); n > 0 {
+				logger.Info("recurring runner", "inserted", n)
+			}
+			if n := dispatcher.RunAlerts(rctx, now); n > 0 {
+				logger.Info("budget alerts", "sent", n)
+			}
+		}
+		run()
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+
 	go func() {
 		logger.Info("telegram polling started")
 		err := tg.Run(ctx, func(u tgbotapi.Update) {
