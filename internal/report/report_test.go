@@ -121,3 +121,28 @@ func TestBuildChartsAndInsightsMultiCategory(t *testing.T) {
 		t.Error("charts should add content")
 	}
 }
+
+func TestBuildWithPrevMonth(t *testing.T) {
+	d := sampleData()
+	prev := sampleData()
+	prev.From = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	prev.To = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	prev.Txns = []store.Transaction{
+		{Item: "nasi lemak", CategoryName: "Meals", CurrencyCode: "MYR", TotalAmount: "100.00", Direction: "expense", EntryDate: time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)},
+	}
+	d.PrevTxns = prev.Txns
+
+	b, err := Build(d)
+	if err != nil {
+		t.Fatalf("build with prev: %v", err)
+	}
+	if !bytes.HasPrefix(b, []byte("%PDF")) || !bytes.Contains(b, []byte("%%EOF")) {
+		t.Error("invalid PDF with prev month")
+	}
+
+	// Empty previous month must render, not error.
+	d.PrevTxns = nil
+	if _, err := Build(d); err != nil {
+		t.Fatalf("empty prev month: %v", err)
+	}
+}

@@ -34,6 +34,9 @@ type Data struct {
 	GroupByCategory bool
 	// Budgets are the monthly per-category limits to report against.
 	Budgets []store.Budget
+	// PrevTxns is the previous calendar month's transactions for the
+	// month-over-month comparison block.
+	PrevTxns []store.Transaction
 }
 
 func decimalPlaces(currencies []store.Currency, code string) int {
@@ -96,6 +99,8 @@ func Build(d Data) ([]byte, error) {
 		pdf.Ln(2)
 	}
 	note(pdf, "Use the PDF bookmarks/sidebar to jump between sections.")
+
+	drawMonthOverMonth(pdf, d, expenses, income)
 
 	// --- Section 2: expense pie per currency ---
 	secPie := pdf.AddLink()
@@ -482,4 +487,63 @@ func drawBudgets(pdf *fpdf.Fpdf, d Data, expenses []store.Transaction, code stri
 			"", 1, "L", false, 0, "")
 	}
 	pdf.Ln(2)
+}
+
+// drawMonthOverMonth renders income/expense/net per currency for this month
+// vs the previous one, with signed delta percent ("new" when prev is 0).
+func drawMonthOverMonth(pdf *fpdf.Fpdf, d Data, expenses, income []store.Transaction) {
+	if len(d.PrevTxns) == 0 {
+		return
+	}
+	prevExp, prevInc := split(d.PrevTxns)
+
+	cur := map[string][2]float64{} // code -> {income, expense}
+	for _, t := range income {
+		a, _ := parse(t.TotalAmount)
+		c := cur[t.CurrencyCode]
+		cur[t.CurrencyCode] = [2]float64{c[0] + a, c[1]}
+	}
+	for _, t := range expenses {
+		a, _ := parse(t.TotalAmount)
+		c := cur[t.CurrencyCode]
+		cur[t.CurrencyCode] = [2]float64{c[0], c[1] + a}
+	}
+	prev := map[string][2]float64{}
+	for _, t := range prevInc {
+		a, _ := parse(t.TotalAmount)
+		c := prev[t.CurrencyCode]
+		prev[t.CurrencyCode] = [2]float64{c[0] + a, c[1]}
+	}
+	for _, t := range prevExp {
+		a, _ := parse(t.TotalAmount)
+		c := prev[t.CurrencyCode]
+		prev[t.CurrencyCode] = [2]float64{c[0], c[1] + a}
+	}
+
+	pdf.Ln(4)
+	heading(pdf, "vs previous month")
+	pdf.SetFont("Helvetica", "", 9)
+	pdf.CellFormat(30, 5.5, "code", "1", 0, "L", true, 0, "")
+	pdf.CellFormat(0, 5.5, "income / prev   expenses / prev   net / prev", "1", 1, "L", true, 0, "")
+	codes := make([]string, 0, len(cur))
+	for c := range cur {
+		codes = append(codes, c)
+	}
+	for c := range prev {
+		if _, ok := cur[c]; !ok {
+			codes = append(codes, c)
+		}
+	}
+	sort.Strings(codes)
+	for _, code := range codes {
+		dp := decimalPlaces(d.Currencies, code)
+		ci, ce := cur[code][0], cur[code][1]
+		pi, pe := prev[code][0], prev[code][1]
+		pdf.CellFormat(30, 5.5, code, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(0, 5.5, fmt.Sprintf("%s / %s   %s / %s   %s / %s",
+			formatAmount(code, dp, ci), formatAmount(code, dp, pi),
+			formatAmount(code, dp, ce), formatAmount(code, dp, pe),
+			formatAmount(code, dp, ci-ce), formatAmount(code, dp, pi-pe)),
+			"1", 1, "L", false, 0, "")
+	}
 }

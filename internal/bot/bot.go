@@ -638,10 +638,16 @@ func (d *Dispatcher) handleReport(ctx context.Context, chatID int64, user store.
 		d.log.Error("load budgets failed", "err", err)
 		budgets = nil
 	}
+	prevFrom, prevTo := from.AddDate(0, -1, 0), from
+	prevTxns, err := d.store.ListTransactions(ctx, store.TxnFilter{UserID: user.ID, From: prevFrom, To: prevTo})
+	if err != nil {
+		d.log.Warn("previous month query failed", "err", err)
+		prevTxns = nil
+	}
 	pdfBytes, err := report.Build(report.Data{
 		From: from, To: to, Txns: txns, Currencies: currencies,
 		TZ: d.tz, Generated: now, GroupByCategory: filter.OrderBy == "category",
-		Budgets: budgets,
+		Budgets: budgets, PrevTxns: prevTxns,
 	})
 	if err != nil {
 		d.log.Error("build report failed", "err", err)
