@@ -84,13 +84,16 @@ func TestRunDueInsertsAndConfirms(t *testing.T) {
 
 func TestRunDueClampsDay31(t *testing.T) {
 	fs, _, d := recSetup()
-	now := time.Date(2026, 2, 10, 9, 0, 0, 0, time.UTC) // Feb: last day 28
+	now := time.Date(2026, 2, 28, 9, 0, 0, 0, time.UTC) // Feb: day 31 clamps to 28
 	fs.recurring = []store.Recurring{{
 		ID: 1, UserID: 55, Item: "Gym", CategoryName: "Others", CurrencyCode: "MYR",
 		Amount: "100.00", Direction: "expense", DayOfMonth: 31, IsActive: true,
 	}}
+	if n := d.RunDue(context.Background(), time.Date(2026, 2, 10, 9, 0, 0, 0, time.UTC)); n != 0 {
+		t.Errorf("must not run before the clamped day, got %d", n)
+	}
 	if n := d.RunDue(context.Background(), now); n != 1 {
-		t.Fatalf("clamped rule should run, got %d", n)
+		t.Fatalf("clamped rule should run on day 28, got %d", n)
 	}
 	if got := fs.inserted[0].EntryDate.Day(); got != 28 {
 		t.Errorf("day clamped to %d, want 28", got)

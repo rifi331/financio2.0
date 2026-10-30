@@ -154,6 +154,9 @@ func (d *Dispatcher) RunDue(ctx context.Context, now time.Time) int {
 			continue
 		}
 		day := clampDay(r.DayOfMonth, now)
+		if day > now.Day() {
+			continue // the rule's (clamped) day hasn't arrived yet this month
+		}
 		entryDate := time.Date(now.Year(), now.Month(), day, 0, 0, 0, 0, d.tz)
 		txn, err := d.insertParsed(ctx, user, ai.ParsedEntry{
 			IsTransaction: true, Item: r.Item, Category: r.CategoryName,
