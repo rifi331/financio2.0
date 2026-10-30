@@ -53,8 +53,11 @@ func TestEditAmount(t *testing.T) {
 
 func TestEditMultipleFields(t *testing.T) {
 	fs, sender, d := editSetup()
-	d.handleEdit(context.Background(), 1, store.User{ID: 55}, 7, "category Snacks date 2026-10-01")
-	if fs.lastPatch == nil || fs.lastPatch.Category == nil || *fs.lastPatch.Category != "Snacks" ||
+	d.handleEdit(context.Background(), 1, store.User{ID: 55}, 7, "category Groceries date 2026-10-01")
+	if fs.lastPatch == nil {
+		t.Fatalf("no patch applied: msgs=%v", sender.messages)
+	}
+	if fs.lastPatch.Category == nil || *fs.lastPatch.Category != "Groceries" ||
 		fs.lastPatch.Date == nil || *fs.lastPatch.Date != "2026-10-01" {
 		t.Errorf("multi-field patch wrong: %+v", fs.lastPatch)
 	}
