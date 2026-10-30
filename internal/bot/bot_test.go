@@ -26,6 +26,7 @@ type fakeStore struct {
 	prompts      map[string]string
 	sysparams    map[string]string
 	budgets      map[[2]string]string
+	lastPatch    *store.TxnPatch
 	lastDupRange *[2]time.Time
 }
 
@@ -88,6 +89,32 @@ func (f *fakeStore) MonthCategorySpend(_ context.Context, cat, code string, t ti
 		}
 	}
 	return strconv.FormatFloat(total, 'f', 2, 64), nil
+}
+
+func (f *fakeStore) UpdateTransactionFields(_ context.Context, id, userID int64, p store.TxnPatch) (store.Transaction, bool, error) {
+	p2 := p
+	f.lastPatch = &p2
+	for i, t := range f.rows {
+		if t.ID == id && t.UserID == userID {
+			if p.Item != nil {
+				f.rows[i].Item = *p.Item
+			}
+			if p.Category != nil {
+				f.rows[i].CategoryName = *p.Category
+			}
+			if p.CurrencyCode != nil {
+				f.rows[i].CurrencyCode = *p.CurrencyCode
+			}
+			if p.Amount != nil {
+				f.rows[i].TotalAmount = *p.Amount
+			}
+			if p.Date != nil {
+				f.rows[i].EntryDate, _ = time.Parse("2006-01-02", *p.Date)
+			}
+			return f.rows[i], true, nil
+		}
+	}
+	return store.Transaction{}, false, nil
 }
 
 func (f *fakeStore) GetSysParam(_ context.Context, key string) (string, bool, error) {

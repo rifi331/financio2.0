@@ -38,6 +38,7 @@ type TxStore interface {
 	InsertTransaction(ctx context.Context, txn store.NewTransaction) (store.Transaction, error)
 	DeleteTransactionByID(ctx context.Context, id, userID int64) (store.Transaction, bool, error)
 	ListTransactions(ctx context.Context, f store.TxnFilter) ([]store.Transaction, error)
+	UpdateTransactionFields(ctx context.Context, id, userID int64, p store.TxnPatch) (store.Transaction, bool, error)
 	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
 	GetPrompt(ctx context.Context, name string) (string, bool, error)
 	SetPrompt(ctx context.Context, name, template string) error
@@ -151,6 +152,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 	switch intent.Kind {
 	case router.IntentDelete:
 		outcome = d.handleDelete(ctx, chatID, user, intent.DeleteID, intent.Text)
+	case router.IntentEdit:
+		outcome = d.handleEdit(ctx, chatID, user, intent.EditID, intent.Text)
 	case router.IntentRecap:
 		outcome = d.handleRecap(ctx, chatID, user, intent.Text)
 	case router.IntentDuplicate:

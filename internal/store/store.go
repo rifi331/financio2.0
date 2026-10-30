@@ -385,3 +385,64 @@ func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to 
 	}
 	return out, nil
 }
+
+// TxnPatch names the fields an edit updates; nil pointers are untouched.
+type TxnPatch struct {
+	Item         *string
+	Category     *string
+	CurrencyCode *string
+	Amount       *string
+	Date         *string // YYYY-MM-DD
+}
+
+// UpdateTransactionFields applies a partial update scoped to the owning
+// user. ok=false covers both not-found and not-owned (indistinguishable).
+func (s *Store) UpdateTransactionFields(ctx context.Context, id, userID int64, p TxnPatch) (Transaction, bool, error) {
+	sets := []string{}
+	args := []any{id, userID}
+	add := func(col string, v any) {
+		args = append(args, v)
+		sets = append(sets, col+" = $"+itoa(len(args)))
+	}
+	if p.Item != nil {
+		add("item", *p.Item)
+	}
+	if p.Category != nil {
+		args = append(args, *p.Category)
+		sets = append(sets, "category_id = (SELECT id FROM category WHERE name = $"+itoa(len(args))+")")
+	}
+	if p.CurrencyCode != nil {
+		add("currency_code", *p.CurrencyCode)
+	}
+	if p.Amount != nil {
+		add("total_amount", *p.Amount)
+	}
+	if p.Date != nil {
+		add("entry_date", *p.Date)
+	}
+	if len(sets) == 0 {
+		return Transaction{}, false, nil
+	}
+	row := s.pool.QueryRow(ctx, `
+		UPDATE transaction_log t SET `+strings.Join(sets, ", ")+`
+		FROM category c
+		WHERE t.id = $1 AND t.user_id = $2 AND c.id = t.category_id
+		RETURNING t.id, t.user_id, t.item, t.category_id, c.name,
+			t.currency_code, t.total_amount::text, t.direction, t.entry_date,
+			t.source, COALESCE(t.raw_message, ''), t.created_at`, args...)
+	t, err := scanTransaction(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Transaction{}, false, nil
+		}
+		return Transaction{}, false, err
+	}
+	return t, true, nil
+}
+
+func itoa(n int) string {
+	if n < 10 {
+		return string(rune('0' + n))
+	}
+	return itoa(n/10) + string(rune('0'+n%10))
+}

@@ -18,6 +18,7 @@ const (
 	IntentPrompt
 	IntentParam
 	IntentBudget
+	IntentEdit
 	IntentPhoto
 	IntentPDF
 	IntentHelp
@@ -32,14 +33,18 @@ type Message struct {
 	DocumentFileID string // file_id of the document, "" otherwise
 }
 
-// Intent is the classification result. DeleteID is set only for IntentDelete.
+// Intent is the classification result. DeleteID is set only for IntentDelete;
+// EditID only for IntentEdit.
 type Intent struct {
 	Kind     IntentKind
 	DeleteID int64
+	EditID   int64
 	Text     string
 }
 
 var deleteRe = regexp.MustCompile(`(?i)^\s*(hapus|delete|del)\s+#?(\d+)\s*$`)
+
+var editRe = regexp.MustCompile(`(?i)^\s*(edit|ubah)\s+#?(\d+)\s+(.+)$`)
 
 var helpRe = regexp.MustCompile(`^/(start|help)(@\w+)?$`)
 
@@ -80,6 +85,14 @@ func Classify(m Message) Intent {
 
 	if budgetRe.MatchString(strings.TrimSpace(m.Text)) {
 		return Intent{Kind: IntentBudget, Text: m.Text}
+	}
+
+	if match := editRe.FindStringSubmatch(m.Text); match != nil {
+		var id int64
+		for _, c := range match[2] {
+			id = id*10 + int64(c-'0')
+		}
+		return Intent{Kind: IntentEdit, EditID: id, Text: strings.TrimSpace(match[3])}
 	}
 
 	if match := deleteRe.FindStringSubmatch(m.Text); match != nil {
@@ -125,6 +138,8 @@ func (k IntentKind) String() string {
 		return "param"
 	case IntentBudget:
 		return "budget"
+	case IntentEdit:
+		return "edit"
 	case IntentPhoto:
 		return "photo"
 	case IntentPDF:
