@@ -45,6 +45,9 @@ type TxStore interface {
 	DeleteRecurring(ctx context.Context, id, userID int64) (bool, error)
 	DueRecurring(ctx context.Context, today time.Time) ([]store.Recurring, error)
 	HasRecurringEntry(ctx context.Context, ruleID int64, t time.Time) (bool, error)
+	ListOptionHelp(ctx context.Context) ([]store.OptionHelp, error)
+	SetOptionHelp(ctx context.Context, command, description, section string, sortOrder int) error
+	DeleteOptionHelp(ctx context.Context, command string) error
 	MarkRecurringRun(ctx context.Context, id int64, day time.Time) error
 	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
 	GetPrompt(ctx context.Context, name string) (string, bool, error)
@@ -199,6 +202,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleRecurring(ctx, chatID, user, intent.Text)
 	case router.IntentGroup:
 		outcome = d.handleGroup(ctx, chatID, user, intent.Text)
+	case router.IntentOptions:
+		outcome = d.handleOptions(ctx, chatID)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:

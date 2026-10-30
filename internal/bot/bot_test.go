@@ -33,6 +33,7 @@ type fakeStore struct {
 	lastBudgetGroup  int64
 	lastSpendGroup   int64
 	alerted          map[string]bool
+	options          []store.OptionHelp
 	budgetGroupOwner map[[2]string]int64
 	lastDupRange     *[2]time.Time
 }
@@ -632,4 +633,29 @@ func (f *fakeStore) HasRecurringEntry(_ context.Context, ruleID int64, t time.Ti
 		}
 	}
 	return false, nil
+}
+
+func (f *fakeStore) ListOptionHelp(_ context.Context) ([]store.OptionHelp, error) {
+	if len(f.options) == 0 {
+		return []store.OptionHelp{
+			{Command: "10rm nasi lemak", Description: "Log an expense.", Section: "Entry", SortOrder: 1},
+			{Command: "/budget set <category> <limit>", Description: "Monthly budget.", Section: "Budgets", SortOrder: 30},
+		}, nil
+	}
+	return f.options, nil
+}
+
+func (f *fakeStore) SetOptionHelp(_ context.Context, command, description, section string, sortOrder int) error {
+	f.options = append(f.options, store.OptionHelp{Command: command, Description: description, Section: section, SortOrder: sortOrder})
+	return nil
+}
+
+func (f *fakeStore) DeleteOptionHelp(_ context.Context, command string) error {
+	for i, o := range f.options {
+		if o.Command == command {
+			f.options = append(f.options[:i], f.options[i+1:]...)
+			return nil
+		}
+	}
+	return nil
 }
