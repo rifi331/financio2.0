@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rifi331/financio/internal/ai"
@@ -43,6 +44,7 @@ type TxStore interface {
 	ListRecurring(ctx context.Context, userID int64) ([]store.Recurring, error)
 	DeleteRecurring(ctx context.Context, id, userID int64) (bool, error)
 	DueRecurring(ctx context.Context, today time.Time) ([]store.Recurring, error)
+	HasRecurringEntry(ctx context.Context, ruleID int64, t time.Time) (bool, error)
 	MarkRecurringRun(ctx context.Context, id int64, day time.Time) error
 	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
 	GetPrompt(ctx context.Context, name string) (string, bool, error)
@@ -110,6 +112,7 @@ type Dispatcher struct {
 	// text entries (nil-safe).
 	history *History
 	// ensuredGroups remembers users already assigned a budget group.
+	ensuredMu     sync.Mutex
 	ensuredGroups map[int64]bool
 }
 
@@ -161,9 +164,14 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 	if !ok {
 		return // dropped silently; never reply
 	}
-	if !d.ensuredGroups[user.ID] {
+	d.ensuredMu.Lock()
+	seen := d.ensuredGroups[user.ID]
+	d.ensuredMu.Unlock()
+	if !seen {
 		if err := d.store.EnsureUserGroup(ctx, user.ID, user.DisplayName); err == nil {
+			d.ensuredMu.Lock()
 			d.ensuredGroups[user.ID] = true
+			d.ensuredMu.Unlock()
 		} else {
 			d.log.Warn("ensure user group failed", "err", err, "user_id", user.ID)
 		}
@@ -474,7 +482,7 @@ func (d *Dispatcher) handleRecap(ctx context.Context, chatID int64, user store.U
 		return
 	}
 	parts := recap.Format(txns, from, to, lang, currencies, len(validCats) > 0, filter.OrderBy)
-	if bl := d.budgetRecapLines(ctx, d.groupOf(ctx, user), txns); len(bl) > 0 {
+	if bl := d.budgetRecapLines(ctx, d.mustGroup(ctx, user), txns); len(bl) > 0 {
 		parts = append(parts, strings.Join(bl, "\n"))
 	}
 	if err := d.tg.SendMessages(chatID, parts); err != nil {
@@ -633,7 +641,7 @@ func (d *Dispatcher) handleReport(ctx context.Context, chatID int64, user store.
 		return
 	}
 
-	budgets, err := d.store.ListBudgets(ctx, d.groupOf(ctx, user))
+	budgets, err := d.store.ListBudgets(ctx, d.mustGroup(ctx, user))
 	if err != nil {
 		d.log.Error("load budgets failed", "err", err)
 		budgets = nil

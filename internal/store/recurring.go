@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -105,4 +106,19 @@ func scanRecurring(row pgx.Row) (Recurring, error) {
 	err := row.Scan(&r.ID, &r.UserID, &r.Item, &r.CategoryName, &r.CurrencyCode,
 		&r.Amount, &r.Direction, &r.DayOfMonth, &r.LastRun, &r.IsActive)
 	return r, err
+}
+
+// HasRecurringEntry reports whether the runner already inserted a
+// transaction for this rule in the calendar month of t (idempotency guard:
+// insert and MarkRecurringRun are not in one transaction, so a crash between
+// them must not double-post on the next tick).
+func (s *Store) HasRecurringEntry(ctx context.Context, ruleID int64, t time.Time) (bool, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(*) FROM transaction_log
+		WHERE source = 'recurring' AND raw_message = $1
+		  AND entry_date >= date_trunc('month', $2::date)
+		  AND entry_date < date_trunc('month', $2::date) + interval '1 month'`,
+		"recurring #"+fmt.Sprint(ruleID), t.Format("2006-01-02")).Scan(&n)
+	return n > 0, err
 }

@@ -26,7 +26,7 @@ func (s *Store) SetBudget(ctx context.Context, groupID int64, categoryName, curr
 	ct, err := s.pool.Exec(ctx, `
 		INSERT INTO budget (budget_group_id, category_id, currency_code, monthly_limit, updated_at)
 		SELECT $4, c.id, $2, $3::numeric, now() FROM category c WHERE c.name = $1
-		ON CONFLICT (category_id, currency_code)
+		ON CONFLICT (budget_group_id, category_id, currency_code)
 		DO UPDATE SET monthly_limit = EXCLUDED.monthly_limit, updated_at = now()`,
 		categoryName, currencyCode, limit, groupID)
 	if err != nil {

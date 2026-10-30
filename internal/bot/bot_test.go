@@ -623,3 +623,13 @@ func (f *fakeStore) MarkBudgetAlert(_ context.Context, groupID int64, cat, code,
 	f.alerted[fmt.Sprint(groupID)+"|"+cat+"|"+code+"|"+month] = true
 	return nil
 }
+
+func (f *fakeStore) HasRecurringEntry(_ context.Context, ruleID int64, t time.Time) (bool, error) {
+	for _, x := range f.inserted {
+		if x.Source == "recurring" && x.RawMessage == "recurring #"+fmt.Sprint(ruleID) &&
+			x.EntryDate.Format("2006-01") == t.Format("2006-01") {
+			return true, nil
+		}
+	}
+	return false, nil
+}

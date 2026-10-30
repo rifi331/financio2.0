@@ -10,15 +10,18 @@ import (
 
 const groupUsage = "Usage:\n/group list\n/group set <display name> <group name>"
 
-// groupOf resolves the acting user's budget group (0 = no group; budget
-// features then behave as unset).
-func (d *Dispatcher) groupOf(ctx context.Context, user store.User) int64 {
+// groupOf resolves the acting user's budget group. ok=false on any error:
+// budget features are skipped for that message rather than falling back to
+// "all groups" (which would leak other groups' budgets).
+func (d *Dispatcher) groupOf(ctx context.Context, user store.User) (int64, bool) {
 	gid, err := d.store.UserGroupID(ctx, user.ID)
-	if err != nil {
-		d.log.Warn("user group lookup failed", "err", err)
-		return 0
+	if err != nil || gid == 0 {
+		if err != nil {
+			d.log.Warn("user group lookup failed", "err", err)
+		}
+		return 0, false
 	}
-	return gid
+	return gid, true
 }
 
 // handleGroup implements the /group admin command.
@@ -58,31 +61,32 @@ func (d *Dispatcher) handleGroup(ctx context.Context, chatID int64, user store.U
 			d.reply(ctx, chatID, groupUsage)
 			return
 		}
-		// display name may span words until the final group name
-		groupName := fields[len(fields)-1]
-		displayName := strings.Join(fields[2:len(fields)-1], " ")
-		if displayName == "" {
-			d.reply(ctx, chatID, groupUsage)
-			return
-		}
-		// Resolve display name -> telegram id via the group roster.
+		// Resolve display name -> telegram id via the group roster. The
+		// display name is the longest known-user prefix of the arguments;
+		// the remainder is the group name (both may be multi-word).
+		rest := strings.TrimSpace(strings.Join(fields[2:], " "))
 		var targetID int64
 		groups, err := d.store.ListGroupsWithMembers(ctx)
 		if err != nil {
 			d.reply(ctx, chatID, "Failed to resolve user.")
 			return
 		}
+		var bestName string
 		for _, g := range groups {
 			for _, m := range g.Members {
-				if strings.EqualFold(m.DisplayName, displayName) {
+				cand := m.DisplayName
+				if len(cand) > len(bestName) && strings.HasPrefix(strings.ToLower(rest), strings.ToLower(cand)) {
+					bestName = cand
 					targetID = m.ID
 				}
 			}
 		}
-		if targetID == 0 {
-			d.reply(ctx, chatID, fmt.Sprintf("No known user named %q (they must have messaged the bot at least once).", displayName))
+		groupName := strings.TrimSpace(rest[len(bestName):])
+		if targetID == 0 || groupName == "" {
+			d.reply(ctx, chatID, "No known user named that (they must have messaged the bot at least once).\n"+groupUsage)
 			return
 		}
+		displayName := bestName
 		if err := d.store.SetUserGroup(ctx, targetID, groupName); err != nil {
 			d.reply(ctx, chatID, "Failed to set group.")
 			return
@@ -93,4 +97,11 @@ func (d *Dispatcher) handleGroup(ctx context.Context, chatID int64, user store.U
 
 	d.reply(ctx, chatID, groupUsage)
 	return
+}
+
+// mustGroup is groupOf for command paths: 0 when unresolvable (group 0
+// matches no rows, so set/delete/list are safe no-ops).
+func (d *Dispatcher) mustGroup(ctx context.Context, user store.User) int64 {
+	gid, _ := d.groupOf(ctx, user)
+	return gid
 }

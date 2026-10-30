@@ -99,3 +99,22 @@ func TestRunDueClampsDay31(t *testing.T) {
 		t.Errorf("day clamped to %d, want 28", got)
 	}
 }
+
+// Crash between insert and MarkRecurringRun must not double-post on retry.
+func TestRunDueNoDoublePostAfterMissedMark(t *testing.T) {
+	fs, _, d := recSetup()
+	fs.recurring = []store.Recurring{{
+		ID: 1, UserID: 55, Item: "Rent", CategoryName: "Housing", CurrencyCode: "MYR",
+		Amount: "1200.00", Direction: "expense", DayOfMonth: 1, IsActive: true,
+	}}
+	now := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	d.RunDue(context.Background(), now)
+
+	fs.recurring[0].LastRun = nil // simulate the mark being lost
+	if n := d.RunDue(context.Background(), now.Add(time.Hour)); n != 0 {
+		t.Fatalf("re-ran despite existing entry: %d", n)
+	}
+	if len(fs.inserted) != 1 {
+		t.Errorf("inserted %d, want 1", len(fs.inserted))
+	}
+}

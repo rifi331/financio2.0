@@ -26,7 +26,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, chatID int64, user store.
 
 	switch sub {
 	case "list":
-		budgets, err := d.store.ListBudgets(ctx, d.groupOf(ctx, user))
+		budgets, err := d.store.ListBudgets(ctx, d.mustGroup(ctx, user))
 		if err != nil {
 			d.log.Error("list budgets failed", "err", err)
 			d.reply(ctx, chatID, "Failed to list budgets.")
@@ -63,7 +63,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, chatID int64, user store.
 			d.reply(ctx, chatID, "Unknown category or currency. /budget list shows valid budgets; categories come from the DB.")
 			return
 		}
-		if err := d.store.SetBudget(ctx, d.groupOf(ctx, user), cat, code, strconv.FormatFloat(limit, 'f', 2, 64)); err != nil {
+		if err := d.store.SetBudget(ctx, d.mustGroup(ctx, user), cat, code, strconv.FormatFloat(limit, 'f', 2, 64)); err != nil {
 			d.log.Error("set budget failed", "err", err)
 			d.reply(ctx, chatID, "Failed to save budget.")
 			return
@@ -80,7 +80,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, chatID int64, user store.
 		if len(fields) >= 4 {
 			code = strings.ToUpper(fields[3])
 		}
-		deleted, err := d.store.DeleteBudget(ctx, d.groupOf(ctx, user), fields[2], code)
+		deleted, err := d.store.DeleteBudget(ctx, d.mustGroup(ctx, user), fields[2], code)
 		if err != nil {
 			d.reply(ctx, chatID, "Failed to delete budget.")
 			return
@@ -179,7 +179,11 @@ func budgetLine(cat, code, spent, limit string) string {
 
 // withBudgetLines appends budget status lines to a confirmation reply.
 func (d *Dispatcher) withBudgetLines(ctx context.Context, user store.User, reply string, txns []store.Transaction) string {
-	lines := d.budgetInfoLines(ctx, d.groupOf(ctx, user), txns)
+	gid, ok := d.groupOf(ctx, user)
+	if !ok {
+		return reply // group unresolved: skip rather than leak other groups
+	}
+	lines := d.budgetInfoLines(ctx, gid, txns)
 	if len(lines) == 0 {
 		return reply
 	}

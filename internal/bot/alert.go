@@ -55,13 +55,18 @@ func (d *Dispatcher) RunAlerts(ctx context.Context, now time.Time) int {
 			d.log.Warn("alert members lookup failed", "err", err)
 			continue
 		}
-		delivered := false
+		delivered, failedCount := 0, 0
 		for _, id := range members {
 			if err := d.tg.SendMessages(id, []string{text}); err == nil {
-				delivered = true
+				delivered++
+			} else {
+				failedCount++
 			}
 		}
-		if delivered {
+		if failedCount > 0 {
+			d.log.Warn("budget alert partially delivered", "category", b.CategoryName, "delivered", delivered, "failed", failedCount)
+		}
+		if delivered > 0 {
 			if err := d.store.MarkBudgetAlert(ctx, b.BudgetGroupID, b.CategoryName, b.CurrencyCode, month); err != nil {
 				d.log.Warn("mark budget alert failed", "err", err)
 			}

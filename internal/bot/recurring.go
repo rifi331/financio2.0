@@ -157,6 +157,10 @@ func (d *Dispatcher) RunDue(ctx context.Context, now time.Time) int {
 		if day > now.Day() {
 			continue // the rule's (clamped) day hasn't arrived yet this month
 		}
+		if done, err := d.store.HasRecurringEntry(ctx, r.ID, now); err == nil && done {
+			_ = d.store.MarkRecurringRun(ctx, r.ID, now) // heal a missed mark
+			continue
+		}
 		entryDate := time.Date(now.Year(), now.Month(), day, 0, 0, 0, 0, d.tz)
 		txn, err := d.insertParsed(ctx, user, ai.ParsedEntry{
 			IsTransaction: true, Item: r.Item, Category: r.CategoryName,
