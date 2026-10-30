@@ -39,6 +39,11 @@ type TxStore interface {
 	DeleteTransactionByID(ctx context.Context, id, userID int64) (store.Transaction, bool, error)
 	ListTransactions(ctx context.Context, f store.TxnFilter) ([]store.Transaction, error)
 	UpdateTransactionFields(ctx context.Context, id, userID int64, p store.TxnPatch) (store.Transaction, bool, error)
+	AddRecurring(ctx context.Context, r store.Recurring) (store.Recurring, error)
+	ListRecurring(ctx context.Context, userID int64) ([]store.Recurring, error)
+	DeleteRecurring(ctx context.Context, id, userID int64) (bool, error)
+	DueRecurring(ctx context.Context, today time.Time) ([]store.Recurring, error)
+	MarkRecurringRun(ctx context.Context, id int64, day time.Time) error
 	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
 	GetPrompt(ctx context.Context, name string) (string, bool, error)
 	SetPrompt(ctx context.Context, name, template string) error
@@ -166,6 +171,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleParam(ctx, chatID, user, intent.Text)
 	case router.IntentBudget:
 		outcome = d.handleBudget(ctx, chatID, user, intent.Text)
+	case router.IntentRecurring:
+		outcome = d.handleRecurring(ctx, chatID, user, intent.Text)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:

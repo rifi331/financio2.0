@@ -27,6 +27,7 @@ type fakeStore struct {
 	sysparams    map[string]string
 	budgets      map[[2]string]string
 	lastPatch    *store.TxnPatch
+	recurring    []store.Recurring
 	lastDupRange *[2]time.Time
 }
 
@@ -499,4 +500,57 @@ func TestDetectLanguage(t *testing.T) {
 			t.Errorf("detectLanguage(%q) != EN", en)
 		}
 	}
+}
+
+func (f *fakeStore) AddRecurring(_ context.Context, r store.Recurring) (store.Recurring, error) {
+	r.ID = int64(len(f.recurring) + 1)
+	f.recurring = append(f.recurring, r)
+	return r, nil
+}
+
+func (f *fakeStore) ListRecurring(_ context.Context, userID int64) ([]store.Recurring, error) {
+	var out []store.Recurring
+	for _, r := range f.recurring {
+		if r.UserID == userID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) DeleteRecurring(_ context.Context, id, userID int64) (bool, error) {
+	for i, r := range f.recurring {
+		if r.ID == id && r.UserID == userID {
+			f.recurring = append(f.recurring[:i], f.recurring[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeStore) DueRecurring(_ context.Context, today time.Time) ([]store.Recurring, error) {
+	var out []store.Recurring
+	month := today.Format("2006-01")
+	last := time.Date(today.Year(), today.Month()+1, 0, 0, 0, 0, 0, today.Location())
+	for _, r := range f.recurring {
+		_ = last // day_of_month always runs (clamped to month length by the caller)
+		if !r.IsActive {
+			continue
+		}
+		if r.LastRun != nil && r.LastRun.Format("2006-01") == month {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (f *fakeStore) MarkRecurringRun(_ context.Context, id int64, day time.Time) error {
+	for i := range f.recurring {
+		if f.recurring[i].ID == id {
+			t := day
+			f.recurring[i].LastRun = &t
+		}
+	}
+	return nil
 }
