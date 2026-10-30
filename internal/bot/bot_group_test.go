@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rifi331/financio/internal/router"
 	"github.com/rifi331/financio/internal/store"
@@ -53,7 +54,13 @@ func TestGroupSetUnknownUser(t *testing.T) {
 
 // Budget spend lookups and set/delete operate on the acting user's group.
 func TestBudgetUsesActingUsersGroup(t *testing.T) {
-	fs := &fakeStore{userGroup: 7}
+	fs := &fakeStore{
+		userGroup:        7,
+		budgets:          map[[2]string]string{{"Meals", "MYR"}: "500"},
+		budgetGroupOwner: map[[2]string]int64{{"Meals", "MYR"}: 7},
+		rows: []store.Transaction{{ID: 1, UserID: 55, Item: "nasi", CategoryName: "Meals", CurrencyCode: "MYR",
+			TotalAmount: "10.00", Direction: "expense", EntryDate: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)}},
+	}
 	sender := &fakeSender{}
 	d := newTestDispatcher(fs, &fakeAI{}, sender)
 	ctx := context.Background()
@@ -63,7 +70,8 @@ func TestBudgetUsesActingUsersGroup(t *testing.T) {
 	if fs.lastBudgetGroup != 7 {
 		t.Errorf("set targeted group %d, want 7", fs.lastBudgetGroup)
 	}
-	_ = d.budgetInfoLines(ctx, 7, []store.Transaction{{CategoryName: "Meals", CurrencyCode: "MYR", EntryDate: fs.rows[0].EntryDate}})
+	_ = d.budgetInfoLines(ctx, 7, []store.Transaction{{CategoryName: "Meals", CurrencyCode: "MYR",
+		Direction: "expense", EntryDate: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)}})
 	if fs.lastSpendGroup != 7 {
 		t.Errorf("spend used group %d, want 7", fs.lastSpendGroup)
 	}
