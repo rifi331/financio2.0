@@ -9,12 +9,13 @@ import (
 
 // EntryInput carries everything ParseEntry needs per request.
 type EntryInput struct {
-	Message         string   // raw user text
-	SystemTemplate  string   // optional DB-stored prompt template; "" = compiled default
-	CurrentDate     string   // YYYY-MM-DD, computed in DISPLAY_TZ by the caller
-	Categories      []string // active categories from the DB
-	Currencies      []string // active currency ISO codes from the DB
-	DefaultCurrency string   // e.g. MYR
+	Message         string    // raw user text
+	SystemTemplate  string    // optional DB-stored prompt template; "" = compiled default
+	History         []Message // optional prior turns for conversational context
+	CurrentDate     string    // YYYY-MM-DD, computed in DISPLAY_TZ by the caller
+	Categories      []string  // active categories from the DB
+	Currencies      []string  // active currency ISO codes from the DB
+	DefaultCurrency string    // e.g. MYR
 }
 
 // ParsedEntry is the structured extraction result.
@@ -45,12 +46,12 @@ func (c *Client) ParseEntry(ctx context.Context, in EntryInput) (ParsedEntry, er
 	system := entrySystemPrompt(in)
 	user := fmt.Sprintf("[Current date: %s]\n%s", in.CurrentDate, in.Message)
 
+	msgs := []Message{{Role: "system", Content: system}}
+	msgs = append(msgs, in.History...)
+	msgs = append(msgs, Message{Role: "user", Content: user})
 	req := ChatRequest{
-		Model: c.Model,
-		Messages: []Message{
-			{Role: "system", Content: system},
-			{Role: "user", Content: user},
-		},
+		Model:    c.Model,
+		Messages: msgs,
 		ResponseFormat: &ResponseFormat{
 			Type:       "json_schema",
 			JSONSchema: &JSONSchemaDef{Name: "expense_entry", Strict: true, Schema: entrySchema()},

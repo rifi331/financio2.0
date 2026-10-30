@@ -93,6 +93,9 @@ type Dispatcher struct {
 	// PerMessageTimeout overrides the compiled perMessageTimeout when > 0
 	// (set from the message_timeout_seconds sysparam at startup).
 	PerMessageTimeout time.Duration
+	// history is the per-chat conversation ring replayed to the model on
+	// text entries (nil-safe).
+	history *History
 }
 
 // NewDispatcher wires the dispatcher. nowFn is injectable for tests (nil -> time.Now).
@@ -101,7 +104,7 @@ func NewDispatcher(s TxStore, a *auth.Authorizer, p Parser, tg Sender, down Down
 		nowFn = time.Now
 	}
 	return &Dispatcher{store: s, auth: a, ai: p, tg: tg, down: down, tz: tz, defCur: defaultCurrency,
-		nowFn: nowFn, log: slog.Default()}
+		nowFn: nowFn, log: slog.Default(), history: NewHistory(10)}
 }
 
 // perMessageTimeout bounds the total processing time of one update. Generous:
@@ -210,6 +213,7 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 	parsed, err := d.ai.ParseEntry(ctx, ai.EntryInput{
 		Message:         text,
 		CurrentDate:     now.Format("2006-01-02"),
+		History:         d.history.Messages(chatID),
 		SystemTemplate:  d.promptTemplate(ctx, "entry"),
 		Categories:      categories,
 		Currencies:      currencyCodes(currencies),
@@ -233,7 +237,9 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 		return
 	}
 
-	d.reply(ctx, chatID, d.withBudgetLines(ctx, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang), []store.Transaction{txn}))
+	reply := d.withBudgetLines(ctx, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang), []store.Transaction{txn})
+	d.history.Add(chatID, text, reply)
+	d.reply(ctx, chatID, reply)
 	return "saved"
 }
 
