@@ -19,7 +19,7 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
 
 My deploy path of choice: TrueNAS SCALE **Custom App** (Apps → Discover Apps →
 Install via YAML) using `deploy/truenas-custom-app.yaml`, with the image
-`ghcr.io/rifi331/financio2.0:v2.7.0` pulled from GitHub Container Registry. Neither
+`ghcr.io/rifi331/financio2.0:v2.8.0` pulled from GitHub Container Registry. Neither
 this dev machine nor the TrueNAS host runs Docker, so the image is built by
 GitHub Actions on tag push (`.github/workflows/docker.yml`) — that workflow also
 performs the acceptance checks (size < 30 MB, fail-fast on missing env).
@@ -28,7 +28,7 @@ performs the acceptance checks (size < 30 MB, fail-fast on missing env).
 - [ ] Prepare the Postgres database (TrueNAS app) and note the `DATABASE_URL`
 - [ ] Push the tag to build/publish the image: `git push origin main --tags`
       (tag `v2.0.0` already exists; verify the Actions run succeeded and the
-      package exists at ghcr.io/rifi331/financio2.0:v2.7.0 — make it public once,
+      package exists at ghcr.io/rifi331/financio2.0:v2.8.0 — make it public once,
       or prepare a ghcr pull secret for TrueNAS)
 - [ ] TrueNAS UI → Apps → Discover Apps → Install via YAML → paste `deploy/truenas-custom-app.yaml`
 - [ ] Fill the env placeholders in the UI: `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`,
@@ -169,7 +169,7 @@ performs the acceptance checks (size < 30 MB, fail-fast on missing env).
   (no cluster configured here); the manifest was validated by full YAML parse
   of all four documents instead — run the dry-run on a machine with cluster
   access before applying.
-- Makefile: `image` target (tags financio:2.0.0 + ghcr.io/rifi331/financio2.0:v2.7.0).
+- Makefile: `image` target (tags financio:2.0.0 + ghcr.io/rifi331/financio2.0:v2.8.0).
 - Final sweep: `go vet` clean, `go test ./...` all ok (`-race` not runnable on
   this host — needs cgo/gcc), `gofmt -l` empty after formatting two test files,
   `go build` clean. README run section updated with a Deploy pointer.
@@ -246,3 +246,22 @@ performs the acceptance checks (size < 30 MB, fail-fast on missing env).
   for budgeted categories; pct rounded half up; nothing when unbudgeted.
 - Recap appends budget lines (period totals vs limit); full report PDF gains a
   "Budgets (cur)" block per currency with [OVER] flag.
+
+### Session 10 — 2026-10-31: v2.8.0 (executed via superpowers plan)
+Plan: docs/superpowers/plans/2026-10-18-v2-8-features.md (ledger in
+.superpowers until review clean).
+- dup fix: non-recap filter replies rejected explicitly; duplicate listing
+  now shows per-row source/time + "likely accidental" vs "same-day pair"
+  hints (detection-only, never auto-delete).
+- Conversation context: last 10 turns per chat replayed to the model on text
+  entries (in-memory, restart clears).
+- /edit <id> amount|category|item|date|currency — partial updates, generic
+  not-found (no owner leakage).
+- /recurring add|list|delete + daily runner (runs ON the clamped day;
+  source 'recurring'; constraint extended in migration 0009).
+- Budget groups (migration 0010): budget_group + app_user.budget_group_id;
+  "Family" seeded with existing users; new users get solo groups;
+  /group list|set; all budget math group-scoped.
+- Budget alerts (migration 0011): >=80% or over -> warn each group member
+  once per month per budget; hourly ticker also drives the recurring runner.
+- Report: "vs previous month" per-currency income/expense/net block.
