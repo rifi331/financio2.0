@@ -223,3 +223,34 @@ func TestTxnDetailNotFoundAndBadID(t *testing.T) {
 		t.Errorf("unauthenticated detail should redirect, got %d", rec.Code)
 	}
 }
+func TestTxnDetailBareArrayDescription(t *testing.T) {
+	s, _, _ := newTestServer()
+	// fakeStore.GetDashboardTransaction returns the wrapper shape; patch one
+	// row through a dedicated server using a bare-array description.
+	fs := &fakeStore{}
+	fs.txns = nil
+	s2 := New(arrayStore{}, NewRing(10), "sekret", nil)
+	_ = s
+	rec := httptest.NewRecorder()
+	s2.ServeHTTP(rec, httptest.NewRequest("GET", "/txn/3?key=sekret", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Line items") || !strings.Contains(body, "kopi susu") {
+		t.Errorf("bare-array description not rendered as table:\n%s", body)
+	}
+}
+
+type arrayStore struct{ *fakeStore }
+
+func (arrayStore) ListDashboardTransactions(context.Context, store.DashboardFilter, int) ([]store.DashboardTxn, error) {
+	return nil, nil
+}
+func (arrayStore) ListActiveCategories(context.Context) ([]string, error) { return nil, nil }
+func (arrayStore) GetDashboardTransaction(_ context.Context, id int64) (store.DashboardDetail, bool, error) {
+	if id != 3 {
+		return store.DashboardDetail{}, false, nil
+	}
+	return store.DashboardDetail{Description: []byte(`[{"item":"kopi susu","amount":5.5,"qty":2,"location":"kopitiam","note":"voucher -0.5"}]`)}, true, nil
+}

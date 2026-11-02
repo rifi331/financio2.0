@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -506,4 +507,24 @@ func (s *Store) GetTransactionDetail(ctx context.Context, id, userID int64) (Das
 	}
 	d.Description = desc
 	return d, true, nil
+}
+
+// ParseDetails decodes a transaction's description JSONB into its line-item
+// maps, accepting both shapes ever written: 2.0's bare array
+// [{"item":...}] and 1.0's {"details":[...]} wrapper.
+func ParseDetails(b []byte) []map[string]any {
+	if len(b) == 0 {
+		return nil
+	}
+	var arr []map[string]any
+	if err := json.Unmarshal(b, &arr); err == nil {
+		return arr
+	}
+	var obj struct {
+		Details []map[string]any `json:"details"`
+	}
+	if err := json.Unmarshal(b, &obj); err != nil {
+		return nil
+	}
+	return obj.Details
 }

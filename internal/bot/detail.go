@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -57,10 +56,8 @@ func detailTable(desc []byte) string {
 	if len(desc) == 0 {
 		return ""
 	}
-	var doc struct {
-		Details []map[string]any `json:"details"`
-	}
-	if err := json.Unmarshal(desc, &doc); err != nil || len(doc.Details) == 0 {
+	details := store.ParseDetails(desc)
+	if len(details) == 0 {
 		return ""
 	}
 	gs := func(m map[string]any, k string) string {
@@ -73,8 +70,8 @@ func detailTable(desc []byte) string {
 		return ""
 	}
 	type row struct{ item, amount, qty, location, note string }
-	rows := make([]row, 0, len(doc.Details))
-	for _, m := range doc.Details {
+	rows := make([]row, 0, len(details))
+	for _, m := range details {
 		rows = append(rows, row{gs(m, "item"), gs(m, "amount"), gs(m, "qty"), gs(m, "location"), gs(m, "note")})
 	}
 	w := [5]int{len("Item"), len("Amount"), len("Qty"), len("Location"), len("Note")}

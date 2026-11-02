@@ -244,10 +244,8 @@ func parseDescription(b []byte) []detailLine {
 	if len(b) == 0 {
 		return nil
 	}
-	var doc struct {
-		Details []map[string]any `json:"details"`
-	}
-	if err := json.Unmarshal(b, &doc); err != nil || len(doc.Details) == 0 {
+	details := store.ParseDetails(b)
+	if len(details) == 0 {
 		return nil
 	}
 	gs := func(m map[string]any, k string) string {
@@ -259,8 +257,8 @@ func parseDescription(b []byte) []detailLine {
 		}
 		return ""
 	}
-	out := make([]detailLine, 0, len(doc.Details))
-	for _, m := range doc.Details {
+	out := make([]detailLine, 0, len(details))
+	for _, m := range details {
 		out = append(out, detailLine{
 			Item: gs(m, "item"), Amount: gs(m, "amount"), Qty: gs(m, "qty"),
 			Location: gs(m, "location"), Note: gs(m, "note"),
