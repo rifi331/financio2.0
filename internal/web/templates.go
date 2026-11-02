@@ -3,11 +3,14 @@ package web
 import (
 	"html/template"
 	"net/http"
+
+	"github.com/rifi331/financio/internal/store"
 )
 
 type loginData struct{ Wrong bool }
 
 type dashRow struct {
+	ID                                             int64
 	Date, UserName, Item, Category, Amount, Source string
 	Income                                         bool
 }
@@ -34,6 +37,7 @@ table{border-collapse:collapse;width:100%;background:#fff;border-radius:8px;over
 th,td{padding:.45rem .7rem;text-align:left;border-bottom:1px solid #edf0f3;font-size:.92rem}
 th{background:#eef2f6;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
 tr:last-child td{border-bottom:none}
+tr.row{cursor:pointer}tr.row:hover{background:#eef3f8}
 .inc{color:#0a7d33}.exp{color:#b3261e}
 form.f{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem;align-items:end;background:#fff;padding:.8rem;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
 label{font-size:.75rem;display:block;color:#5a6b7b;margin-bottom:.15rem}
@@ -70,7 +74,7 @@ var dashTmpl = template.Must(template.Must(pageTmpl.Clone()).Parse(`{{define "co
 <button>Apply</button></form>
 <p class="tot">Net for {{.Month}} ({{.Count}} txns): <b>{{.Totals}}</b></p>
 <table><tr><th>Date</th><th>User</th><th>Item</th><th>Category</th><th>Amount</th><th>Src</th></tr>
-{{range .Rows}}<tr><td>{{.Date}}</td><td>{{.UserName}}</td><td>{{.Item}}</td><td>{{.Category}}</td>
+{{range .Rows}}<tr class="row" onclick="location.href='/txn/{{.ID}}'"><td>{{.Date}}</td><td>{{.UserName}}</td><td>{{.Item}}</td><td>{{.Category}}</td>
 <td class="{{if .Income}}inc{{else}}exp{{end}}">{{if .Income}}+{{end}}{{.Amount}}</td><td>{{.Source}}</td></tr>
 {{else}}<tr><td colspan="6">No transactions for this filter.</td></tr>{{end}}
 </table>
@@ -90,3 +94,44 @@ func renderPage(w http.ResponseWriter, t *template.Template, data any) {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
 	}
 }
+
+type detailData struct {
+	Txn     store.DashboardDetail
+	Details []detailLine
+	RawJSON string
+}
+
+var detailTmpl = template.Must(template.Must(pageTmpl.Clone()).Parse(`{{define "content"}}
+<p class="meta"><a href="/">&larr; back to dashboard</a></p>
+<table>
+<tr><th>ID</th><td>{{.Txn.ID}}</td></tr>
+<tr><th>Item</th><td>{{.Txn.Item}}</td></tr>
+<tr><th>Category</th><td>{{.Txn.CategoryName}}</td></tr>
+<tr><th>Amount</th><td class="{{if eq .Txn.Direction "income"}}inc{{else}}exp{{end}}">{{.Txn.CurrencyCode}} {{.Txn.TotalAmount}}</td></tr>
+<tr><th>Direction</th><td>{{.Txn.Direction}}</td></tr>
+<tr><th>Date</th><td>{{.Txn.EntryDate.Format "2006-01-02"}}</td></tr>
+<tr><th>User</th><td>{{.Txn.UserName}}</td></tr>
+<tr><th>Source</th><td>{{.Txn.Source}}</td></tr>
+<tr><th>Created</th><td>{{.Txn.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+</table>
+
+{{if .Details}}
+<h3 style="margin:1rem 0 .4rem">Line items</h3>
+<table><tr><th>Item</th><th>Amount</th><th>Qty</th><th>Location</th><th>Note</th><th>Date</th><th>Type</th></tr>
+{{range .Details}}<tr>
+<td>{{.Item}}</td><td>{{.Amount}}</td><td>{{.Qty}}</td><td>{{.Location}}</td>
+<td>{{.Note}}</td><td>{{.Date}}</td><td>{{.Type}}</td></tr>
+{{else}}<tr><td colspan="7">No line items.</td></tr>{{end}}
+</table>
+{{end}}
+
+{{if .RawJSON}}
+<details style="margin-top:1rem"><summary style="cursor:pointer;color:#5a6b7b">Raw JSON (description)</summary>
+<pre>{{.RawJSON}}</pre></details>
+{{end}}
+
+{{if .Txn.RawMessage}}
+<details style="margin-top:.6rem"><summary style="cursor:pointer;color:#5a6b7b">Original message</summary>
+<pre>{{.Txn.RawMessage}}</pre></details>
+{{end}}
+{{end}}`))

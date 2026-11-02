@@ -183,3 +183,43 @@ func TestRingTail(t *testing.T) {
 		t.Error("Write should report full length")
 	}
 }
+
+func (f *fakeStore) GetDashboardTransaction(_ context.Context, id int64) (store.DashboardDetail, bool, error) {
+	for _, t := range f.txns {
+		if t.ID == id {
+			return store.DashboardDetail{DashboardTxn: t, Description: []byte(`{"details":[{"item":"MAMEE","amount":2.98,"qty":1,"location":"giant","transactionDate":"2026-10-14","transactionType":"Duitnow QR"}],"totalTransactions":1}`)}, true, nil
+		}
+	}
+	return store.DashboardDetail{}, false, nil
+}
+
+func TestTxnDetailPage(t *testing.T) {
+	s, _, _ := newTestServer()
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest("GET", "/txn/1?key=sekret", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"nasi lemak", "Line items", "MAMEE", "Duitnow QR", "Raw JSON", "totalTransactions"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("detail page missing %q", want)
+		}
+	}
+}
+
+func TestTxnDetailNotFoundAndBadID(t *testing.T) {
+	s, _, _ := newTestServer()
+	for _, u := range []string{"/txn/999?key=sekret", "/txn/abc?key=sekret"} {
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, httptest.NewRequest("GET", u, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: want 404, got %d", u, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest("GET", "/txn/1", nil))
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("unauthenticated detail should redirect, got %d", rec.Code)
+	}
+}

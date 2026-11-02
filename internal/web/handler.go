@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ const cookieName = "financio_dash"
 type TxnLister interface {
 	ListDashboardTransactions(ctx context.Context, f store.DashboardFilter, limit int) ([]store.DashboardTxn, error)
 	ListActiveCategories(ctx context.Context) ([]string, error)
+	GetDashboardTransaction(ctx context.Context, id int64) (store.DashboardDetail, bool, error)
 }
 
 // Server serves the dashboard. A nil/empty token disables it (503).
@@ -41,6 +43,7 @@ func New(st TxnLister, ring *Ring, token string, tz *time.Location) *Server {
 		tz = time.UTC
 	}
 	s := &Server{store: st, ring: ring, token: token, tz: tz, mux: http.NewServeMux()}
+	s.mux.HandleFunc("/txn/", s.handleTxnDetail)
 	s.mux.HandleFunc("/", s.handleDashboard)
 	s.mux.HandleFunc("/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/logs", s.handleLogsJSON)
@@ -179,6 +182,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		net[t.CurrencyCode] += amt
 		rows = append(rows, dashRow{
+			ID:       t.ID,
 			Date:     t.EntryDate.In(s.tz).Format("02 Jan"),
 			UserName: t.UserName,
 			Item:     t.Item,
@@ -203,6 +207,67 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Count:      len(rows),
 	}
 	renderPage(w, dashTmpl, data)
+}
+
+func (s *Server) handleTxnDetail(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuth(w, r) {
+		return
+	}
+	idStr := strings.TrimPrefix(r.URL.Path, "/txn/")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	d, ok, err := s.store.GetDashboardTransaction(ctx, id)
+	if err != nil {
+		http.Error(w, "database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	renderPage(w, detailTmpl, detailData{Txn: d, Details: parseDescription(d.Description), RawJSON: strings.TrimSpace(string(d.Description))})
+}
+
+// detailLine is one rendered line item from the description JSONB.
+type detailLine struct {
+	Item, Amount, Qty, Location, Note, Date, Type string
+}
+
+// parseDescription renders {"details":[...]} rows into readable lines;
+// unknown shapes yield no lines (the raw JSON block still shows).
+func parseDescription(b []byte) []detailLine {
+	if len(b) == 0 {
+		return nil
+	}
+	var doc struct {
+		Details []map[string]any `json:"details"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil || len(doc.Details) == 0 {
+		return nil
+	}
+	gs := func(m map[string]any, k string) string {
+		if v, ok := m[k]; ok && v != nil {
+			if f, ok := v.(float64); ok {
+				return strconv.FormatFloat(f, 'f', -1, 64)
+			}
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+	}
+	out := make([]detailLine, 0, len(doc.Details))
+	for _, m := range doc.Details {
+		out = append(out, detailLine{
+			Item: gs(m, "item"), Amount: gs(m, "amount"), Qty: gs(m, "qty"),
+			Location: gs(m, "location"), Note: gs(m, "note"),
+			Date: gs(m, "transactionDate"), Type: gs(m, "transactionType"),
+		})
+	}
+	return out
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {

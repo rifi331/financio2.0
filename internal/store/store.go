@@ -446,3 +446,37 @@ func itoa(n int) string {
 	}
 	return itoa(n/10) + string(rune('0'+n%10))
 }
+
+// DashboardDetail is one transaction with its JSONB description, for the
+// web UI detail page.
+type DashboardDetail struct {
+	DashboardTxn
+	Description []byte // raw JSONB, may be NULL
+}
+
+// GetDashboardTransaction fetches one transaction (household-wide, like the
+// dashboard list) including the description JSONB.
+func (s *Store) GetDashboardTransaction(ctx context.Context, id int64) (DashboardDetail, bool, error) {
+	var d DashboardDetail
+	var desc []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT t.id, t.user_id, t.item, t.category_id, c.name,
+			t.currency_code, t.total_amount::text, t.direction, t.entry_date,
+			t.source, COALESCE(t.raw_message, ''), t.created_at,
+			COALESCE(u.display_name, ''), t.description
+		FROM transaction_log t
+		JOIN category c ON c.id = t.category_id
+		JOIN app_user u ON u.id = t.user_id
+		WHERE t.id = $1`, id).Scan(
+		&d.ID, &d.UserID, &d.Item, &d.CategoryID, &d.CategoryName,
+		&d.CurrencyCode, &d.TotalAmount, &d.Direction, &d.EntryDate, &d.Source,
+		&d.RawMessage, &d.CreatedAt, &d.UserName, &desc)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return DashboardDetail{}, false, nil
+		}
+		return DashboardDetail{}, false, fmt.Errorf("get dashboard transaction: %w", err)
+	}
+	d.Description = desc
+	return d, true, nil
+}
