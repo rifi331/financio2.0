@@ -11,6 +11,7 @@ INSERT INTO option_help (command, description, section, sort_order) VALUES
   ('photo', 'Send a receipt or statement screenshot — every row becomes a transaction (multi-row OK).', 'Entry', 2),
   ('statement.pdf', 'Send a bank/e-wallet statement PDF as a document — spending rows are parsed, top-up rows skipped.', 'Entry', 3),
   ('edit <id> amount 12.50 [category X] [item label] [date 2026-10-01] [currency MYR]', 'Fix a transaction (fields optional, combinable).', 'Manage', 10),
+  ('detail <id> / rincian <id>', 'Full detail of one transaction incl. line-item table and the original message.', 'Manage', 13),
   ('delete <id> / hapus <id>', 'Delete one of your transactions by id.', 'Manage', 11),
   ('check duplicate <month> / cek duplikat <bulan>', 'List same item+amount+date entries with accidental/same-day hints (you decide what to delete).', 'Manage', 12),
   ('recap <period> [category] [order by category]', 'Spending summary. E.g. ''recap oct'', ''recap this week meals''.', 'Reports', 20),

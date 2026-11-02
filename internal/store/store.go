@@ -480,3 +480,30 @@ func (s *Store) GetDashboardTransaction(ctx context.Context, id int64) (Dashboar
 	d.Description = desc
 	return d, true, nil
 }
+
+// GetTransactionDetail is GetDashboardTransaction scoped to the requesting
+// user (not-found and not-owned are indistinguishable).
+func (s *Store) GetTransactionDetail(ctx context.Context, id, userID int64) (DashboardDetail, bool, error) {
+	var d DashboardDetail
+	var desc []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT t.id, t.user_id, t.item, t.category_id, c.name,
+			t.currency_code, t.total_amount::text, t.direction, t.entry_date,
+			t.source, COALESCE(t.raw_message, ''), t.created_at,
+			COALESCE(u.display_name, ''), t.description
+		FROM transaction_log t
+		JOIN category c ON c.id = t.category_id
+		JOIN app_user u ON u.id = t.user_id
+		WHERE t.id = $1 AND t.user_id = $2`, id, userID).Scan(
+		&d.ID, &d.UserID, &d.Item, &d.CategoryID, &d.CategoryName,
+		&d.CurrencyCode, &d.TotalAmount, &d.Direction, &d.EntryDate, &d.Source,
+		&d.RawMessage, &d.CreatedAt, &d.UserName, &desc)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DashboardDetail{}, false, nil
+	}
+	if err != nil {
+		return DashboardDetail{}, false, fmt.Errorf("get transaction detail: %w", err)
+	}
+	d.Description = desc
+	return d, true, nil
+}

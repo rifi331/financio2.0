@@ -120,6 +120,18 @@ func (c *Client) SendMessage(chatID int64, text string) error {
 	return c.SendMessages(chatID, []string{text})
 }
 
+// SendMarkdown sends one message with Markdown parse mode (used for
+// monospace table blocks).
+func (c *Client) SendMarkdown(chatID int64, text string) error {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = tgbotapi.ModeMarkdown
+	if _, err := c.api.Send(msg); err != nil {
+		c.log.Error("send markdown failed", "chat_id", chatID, "err", err)
+		return err
+	}
+	return nil
+}
+
 // SendDocument uploads an in-memory file as a Telegram document.
 func (c *Client) SendDocument(chatID int64, filename string, data []byte) error {
 	msg := tgbotapi.NewDocument(chatID, tgbotapi.FileBytes{Name: filename, Bytes: data})

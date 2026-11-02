@@ -22,6 +22,7 @@ const (
 	IntentRecurring
 	IntentGroup
 	IntentOptions
+	IntentDetail
 	IntentPhoto
 	IntentPDF
 	IntentHelp
@@ -48,6 +49,8 @@ type Intent struct {
 var deleteRe = regexp.MustCompile(`(?i)^\s*(hapus|delete|del)\s+#?(\d+)\s*$`)
 
 var editRe = regexp.MustCompile(`(?i)^\s*(edit|ubah)\s+#?(\d+)\s+(.+)$`)
+
+var detailRe = regexp.MustCompile(`(?i)^\s*(detail|rincian|info)\s+#?(\d+)\s*$`)
 
 var helpRe = regexp.MustCompile(`^/(start|help)(@\w+)?$`)
 
@@ -106,6 +109,14 @@ func Classify(m Message) Intent {
 
 	if optionsRe.MatchString(strings.TrimSpace(m.Text)) {
 		return Intent{Kind: IntentOptions, Text: m.Text}
+	}
+
+	if match := detailRe.FindStringSubmatch(m.Text); match != nil {
+		var id int64
+		for _, c := range match[2] {
+			id = id*10 + int64(c-'0')
+		}
+		return Intent{Kind: IntentDetail, EditID: id, Text: m.Text}
 	}
 
 	if match := editRe.FindStringSubmatch(m.Text); match != nil {
@@ -167,6 +178,8 @@ func (k IntentKind) String() string {
 		return "group"
 	case IntentOptions:
 		return "options"
+	case IntentDetail:
+		return "detail"
 	case IntentPhoto:
 		return "photo"
 	case IntentPDF:

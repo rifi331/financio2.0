@@ -30,6 +30,7 @@ type Sender interface {
 	SendMessage(chatID int64, text string) error
 	SendMessages(chatID int64, parts []string) error
 	SendDocument(chatID int64, filename string, data []byte) error
+	SendMarkdown(chatID int64, text string) error
 }
 
 // TxStore is the persistence surface the dispatcher needs.
@@ -48,6 +49,7 @@ type TxStore interface {
 	ListOptionHelp(ctx context.Context) ([]store.OptionHelp, error)
 	SetOptionHelp(ctx context.Context, command, description, section string, sortOrder int) error
 	DeleteOptionHelp(ctx context.Context, command string) error
+	GetTransactionDetail(ctx context.Context, id, userID int64) (store.DashboardDetail, bool, error)
 	MarkRecurringRun(ctx context.Context, id int64, day time.Time) error
 	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
 	GetPrompt(ctx context.Context, name string) (string, bool, error)
@@ -204,6 +206,8 @@ func (d *Dispatcher) handle(ctx context.Context, updateID, chatID, userID int64,
 		outcome = d.handleGroup(ctx, chatID, user, intent.Text)
 	case router.IntentOptions:
 		outcome = d.handleOptions(ctx, chatID)
+	case router.IntentDetail:
+		outcome = d.handleDetail(ctx, chatID, user, intent.EditID)
 	case router.IntentPhoto:
 		outcome = d.handlePhoto(ctx, chatID, user, msg, "photo")
 	case router.IntentPDF:

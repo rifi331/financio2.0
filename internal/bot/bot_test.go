@@ -247,7 +247,13 @@ func (f *fakeAI) ParseRecapFilter(_ context.Context, text string, _ time.Time, _
 type fakeSender struct {
 	messages  []string
 	documents []string // filenames sent via SendDocument
+	markdowns []string
 	lastDoc   []byte
+}
+
+func (f *fakeSender) SendMarkdown(_ int64, text string) error {
+	f.markdowns = append(f.markdowns, text)
+	return nil
 }
 
 func (f *fakeSender) SendDocument(_ int64, filename string, data []byte) error {
@@ -658,4 +664,14 @@ func (f *fakeStore) DeleteOptionHelp(_ context.Context, command string) error {
 		}
 	}
 	return nil
+}
+
+func (f *fakeStore) GetTransactionDetail(_ context.Context, id, userID int64) (store.DashboardDetail, bool, error) {
+	for _, t := range f.rows {
+		if t.ID == id && t.UserID == userID {
+			return store.DashboardDetail{DashboardTxn: store.DashboardTxn{Transaction: t, UserName: "Rifi Anggriawan"},
+				Description: []byte(`{"details":[{"item":"MAMEE","amount":2.98,"qty":1,"location":"giant"},{"item":"A1 MEE","amount":6.9,"qty":2,"location":"giant","note":"voucher -1"}]}`)}, true, nil
+		}
+	}
+	return store.DashboardDetail{}, false, nil
 }
