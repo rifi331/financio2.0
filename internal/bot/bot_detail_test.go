@@ -46,7 +46,7 @@ func TestHandleDetailTable(t *testing.T) {
 		t.Fatalf("markdown not sent: %v", sender.markdowns)
 	}
 	body := sender.markdowns[0]
-	for _, want := range []string{"Giant run", "Groceries", "```", "MAMEE", "voucher -1", "receipt.jpg"} {
+	for _, want := range []string{"Giant run", "Groceries", "```", "MAMEE", "receipt.jpg"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail missing %q:\n%s", want, body)
 		}
@@ -83,8 +83,11 @@ func TestHandleDetailNotFound(t *testing.T) {
 // {"details":[...]} wrapper — the table must render for both shapes.
 func TestDetailTableBareArray(t *testing.T) {
 	got := detailTable([]byte(`[{"item":"kopi susu","amount":5.5,"qty":2,"location":"kopitiam"}]`))
-	if !strings.Contains(got, "kopi susu") || !strings.Contains(got, "kopitiam") || !strings.Contains(got, "Item") {
+	if !strings.Contains(got, "kopi susu") || !strings.Contains(got, "Item") || !strings.Contains(got, "Qty") {
 		t.Errorf("bare-array table wrong:\n%s", got)
+	}
+	if strings.Contains(got, "kopitiam") {
+		t.Errorf("location must not be a table column:\n%s", got)
 	}
 	if detailTable([]byte(`[{"item":"x"}]`)) == "" {
 		t.Error("array shape must produce a table")

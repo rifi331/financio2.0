@@ -24,12 +24,11 @@ func (d *Dispatcher) handleDetail(ctx context.Context, chatID int64, user store.
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "🆔: %d\n🛍️: %s\n🔠: %s\n💵: %s %s\n", t.ID, t.Item, t.CategoryName, t.CurrencyCode, t.TotalAmount)
+	fmt.Fprintf(&b, "🛍️ %s — %s %s", t.Item, t.CurrencyCode, t.TotalAmount)
 	if t.Direction == "income" {
-		b.WriteString("↩️: Income\n")
+		b.WriteString(" (income)")
 	}
-	fmt.Fprintf(&b, "🗓️: %s\n👤: %s\n📎: %s\n🕒: %s\n",
-		t.EntryDate.Format("2006-01-02"), t.UserName, t.Source, t.CreatedAt.In(d.tz).Format("2006-01-02 15:04"))
+	fmt.Fprintf(&b, "\n🔠 %s · 🗓️ %s · 🆔 %d\n", t.CategoryName, t.EntryDate.Format("2006-01-02"), t.ID)
 
 	if table := detailTable(t.Description); table != "" {
 		b.WriteString("\n```\n" + table + "\n```\n")
@@ -69,27 +68,21 @@ func detailTable(desc []byte) string {
 		}
 		return ""
 	}
-	type row struct{ item, amount, qty, location, note string }
+	type row struct{ item, qty, amount string }
 	rows := make([]row, 0, len(details))
 	for _, m := range details {
-		rows = append(rows, row{gs(m, "item"), gs(m, "amount"), gs(m, "qty"), gs(m, "location"), gs(m, "note")})
+		rows = append(rows, row{gs(m, "item"), gs(m, "qty"), gs(m, "amount")})
 	}
-	w := [5]int{len("Item"), len("Amount"), len("Qty"), len("Location"), len("Note")}
+	w := [3]int{len("Item"), len("Qty"), len("Amount")}
 	for _, r := range rows {
 		if len(r.item) > w[0] {
 			w[0] = len(r.item)
 		}
-		if len(r.amount) > w[1] {
-			w[1] = len(r.amount)
+		if len(r.qty) > w[1] {
+			w[1] = len(r.qty)
 		}
-		if len(r.qty) > w[2] {
-			w[2] = len(r.qty)
-		}
-		if len(r.location) > w[3] {
-			w[3] = len(r.location)
-		}
-		if len(r.note) > w[4] {
-			w[4] = len(r.note)
+		if len(r.amount) > w[2] {
+			w[2] = len(r.amount)
 		}
 	}
 	pad := func(s string, n int) string {
@@ -99,10 +92,10 @@ func detailTable(desc []byte) string {
 		return s
 	}
 	var b strings.Builder
-	b.WriteString(pad("Item", w[0]) + "  " + pad("Amount", w[1]) + "  " + pad("Qty", w[2]) + "  " + pad("Location", w[3]) + "  " + "Note\n")
-	b.WriteString(strings.Repeat("-", w[0]+w[1]+w[2]+w[3]+8) + "\n")
+	b.WriteString(pad("Item", w[0]) + "  " + pad("Qty", w[1]) + "  " + pad("Amount", w[2]) + "\n")
+	b.WriteString(strings.Repeat("-", w[0]+w[1]+w[2]+4) + "\n")
 	for _, r := range rows {
-		b.WriteString(pad(r.item, w[0]) + "  " + pad(r.amount, w[1]) + "  " + pad(r.qty, w[2]) + "  " + pad(r.location, w[3]) + "  " + r.note + "\n")
+		b.WriteString(pad(r.item, w[0]) + "  " + pad(r.qty, w[1]) + "  " + pad(r.amount, w[2]) + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
