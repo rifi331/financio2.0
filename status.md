@@ -19,7 +19,7 @@ Legend: `Pending` → `In Progress` → `Done` (or `Skipped` with a reason).
 
 My deploy path of choice: TrueNAS SCALE **Custom App** (Apps → Discover Apps →
 Install via YAML) using `deploy/truenas-custom-app.yaml`, with the image
-`ghcr.io/rifi331/financio2.0:v2.8.5` pulled from GitHub Container Registry. Neither
+`ghcr.io/rifi331/financio2.0:v2.8.6` pulled from GitHub Container Registry. Neither
 this dev machine nor the TrueNAS host runs Docker, so the image is built by
 GitHub Actions on tag push (`.github/workflows/docker.yml`) — that workflow also
 performs the acceptance checks (size < 30 MB, fail-fast on missing env).
@@ -28,7 +28,7 @@ performs the acceptance checks (size < 30 MB, fail-fast on missing env).
 - [ ] Prepare the Postgres database (TrueNAS app) and note the `DATABASE_URL`
 - [ ] Push the tag to build/publish the image: `git push origin main --tags`
       (tag `v2.0.0` already exists; verify the Actions run succeeded and the
-      package exists at ghcr.io/rifi331/financio2.0:v2.8.5 — make it public once,
+      package exists at ghcr.io/rifi331/financio2.0:v2.8.6 — make it public once,
       or prepare a ghcr pull secret for TrueNAS)
 - [ ] TrueNAS UI → Apps → Discover Apps → Install via YAML → paste `deploy/truenas-custom-app.yaml`
 - [ ] Fill the env placeholders in the UI: `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`,
@@ -169,7 +169,7 @@ performs the acceptance checks (size < 30 MB, fail-fast on missing env).
   (no cluster configured here); the manifest was validated by full YAML parse
   of all four documents instead — run the dry-run on a machine with cluster
   access before applying.
-- Makefile: `image` target (tags financio:2.0.0 + ghcr.io/rifi331/financio2.0:v2.8.5).
+- Makefile: `image` target (tags financio:2.0.0 + ghcr.io/rifi331/financio2.0:v2.8.6).
 - Final sweep: `go vet` clean, `go test ./...` all ok (`-race` not runnable on
   this host — needs cgo/gcc), `gofmt -l` empty after formatting two test files,
   `go build` clean. README run section updated with a Deploy pointer.
@@ -296,3 +296,10 @@ Plan: docs/superpowers/plans/2026-10-18-v2-8-features.md (ledger in
   category · date · id); line-item table reduced to Item | Qty | Amount
   (location/note dropped from the table per user request — still in the
   web raw JSON block).
+
+### v2.8.6 — 2026-11-05: fix check-duplicate SQL
+- v2.8.0's duplicate enrichment put a window function in a WHERE clause —
+  Postgres rejects it ("window functions are not allowed in WHERE"), so
+  check duplicate always failed against the real DB (fakes never execute
+  SQL, which is why tests stayed green). Rewritten with a CTE. Same class
+  of bug the final reviewer warned about (fakeStore semantic drift).

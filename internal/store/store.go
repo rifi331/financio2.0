@@ -349,15 +349,21 @@ type DuplicateGroup struct {
 // the group has more than one member. Ordered by date; Rows carry per-row
 // context (source, created_at) for legit-vs-accidental judgment.
 func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]DuplicateGroup, error) {
+	// Window functions are illegal in WHERE — compute the per-group count in
+	// a CTE first, then filter on it.
 	rows, err := s.pool.Query(ctx, `
-		SELECT t.id, t.user_id, t.item, t.category_id, c.name,
-			t.currency_code, t.total_amount::text, t.direction, t.entry_date,
-			t.source, COALESCE(t.raw_message, ''), t.created_at
-		FROM transaction_log t
-		JOIN category c ON c.id = t.category_id
-		WHERE t.user_id = $1 AND t.entry_date >= $2 AND t.entry_date < $3
-		  AND count(*) OVER (PARTITION BY t.item, t.total_amount, t.currency_code, t.entry_date) > 1
-		ORDER BY t.entry_date, t.id`, userID, from, to)
+		WITH grouped AS (
+			SELECT t.*, count(*) OVER (PARTITION BY t.item, t.total_amount, t.currency_code, t.entry_date) AS grp_cnt
+			FROM transaction_log t
+			WHERE t.user_id = $1 AND t.entry_date >= $2 AND t.entry_date < $3
+		)
+		SELECT g.id, g.user_id, g.item, g.category_id, c.name,
+			g.currency_code, g.total_amount::text, g.direction, g.entry_date,
+			g.source, COALESCE(g.raw_message, ''), g.created_at
+		FROM grouped g
+		JOIN category c ON c.id = g.category_id
+		WHERE g.grp_cnt > 1
+		ORDER BY g.entry_date, g.id`, userID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("list duplicate groups: %w", err)
 	}
