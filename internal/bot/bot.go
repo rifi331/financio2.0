@@ -764,7 +764,7 @@ func (d *Dispatcher) handleDuplicate(ctx context.Context, chatID int64, user sto
 			len(g.IDs), recap.FormatAmountCode(g.Currency, dp(g.Currency), g.Amount),
 			g.Item, g.EntryDate.In(d.tz).Format("2006-01-02"), hint)
 		for _, r := range g.Rows {
-			fmt.Fprintf(&b, "  - #%d %s, %s\n", r.ID, r.Source, r.CreatedAt.In(d.tz).Format("15:04"))
+			fmt.Fprintf(&b, "  - #%d %s, %s\n", r.ID, r.Source, r.CreatedAt.In(d.tz).Format("02 Jan 15:04:05"))
 		}
 		fmt.Fprintf(&b, "  [%s]\n", strings.Join(ids, " / "))
 	}

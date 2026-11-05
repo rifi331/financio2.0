@@ -6,7 +6,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/rifi331/financio/internal/recap"
 	"github.com/rifi331/financio/internal/store"
@@ -230,23 +229,24 @@ func (d *Dispatcher) budgetRecapLines(ctx context.Context, groupID int64, txns [
 // non-text source or were created within 5 minutes (re-parse/double-tap
 // signature); "same-day pair" otherwise (common for transit round trips).
 // Hints inform judgment — nothing is ever auto-deleted.
+//
+// Refined heuristic: rows created in the SAME parse batch (identical
+// created_at to the second) came from one receipt/history screenshot that
+// legitimately contained repeats — e.g. both toll rows of a commute — so
+// they get the calm "one import" hint. Rows entered in DIFFERENT batches
+// (the amount was sent/parsed more than once) get the warning.
 func dupHint(g store.DuplicateGroup) string {
 	if len(g.Rows) < 2 {
 		return ""
 	}
-	sameNonText := true
-	for _, r := range g.Rows {
-		if r.Source == "text" {
-			sameNonText = false
+	sameBatch := g.Rows[0].CreatedAt.Equal(g.Rows[1].CreatedAt)
+	for i := 2; i < len(g.Rows); i++ {
+		if !g.Rows[i].CreatedAt.Equal(g.Rows[0].CreatedAt) {
+			sameBatch = false
 		}
 	}
-	for i := 1; i < len(g.Rows); i++ {
-		if g.Rows[i].CreatedAt.Sub(g.Rows[i-1].CreatedAt) <= 5*time.Minute &&
-			g.Rows[i].CreatedAt.Sub(g.Rows[i-1].CreatedAt) >= 0 {
-			if sameNonText || g.Rows[i].CreatedAt.Sub(g.Rows[i-1].CreatedAt) <= 5*time.Minute {
-				return "⚠️ likely accidental"
-			}
-		}
+	if sameBatch {
+		return "ℹ️ one import"
 	}
-	return "ℹ️ same-day pair"
+	return "⚠️ entered separately"
 }

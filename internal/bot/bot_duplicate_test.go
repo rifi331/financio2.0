@@ -117,7 +117,7 @@ func TestDuplicateEnrichedRendering(t *testing.T) {
 
 	d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate october")
 	body := strings.Join(sender.messages, "\n")
-	for _, want := range []string{"likely accidental", "#101 pdf", "#102 pdf", "08:02"} {
+	for _, want := range []string{"entered separately", "#101 pdf", "#102 pdf", "08:02"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("enriched reply missing %q:\n%s", want, body)
 		}
@@ -133,11 +133,11 @@ func TestDuplicateSameDayPairHint(t *testing.T) {
 
 	d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate october")
 	body := strings.Join(sender.messages, "\n")
-	if !strings.Contains(body, "same-day pair") {
-		t.Errorf("legit pair should hint same-day:\n%s", body)
+	if !strings.Contains(body, "entered separately") {
+		t.Errorf("rows from different batches should hint entered separately:\n%s", body)
 	}
-	if strings.Contains(body, "likely accidental") {
-		t.Error("text rows hours apart must not be flagged accidental")
+	if strings.Contains(body, "one import") {
+		t.Error("rows created at different times are not one import")
 	}
 }
 
