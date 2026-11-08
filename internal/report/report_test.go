@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pdf/fpdf"
+
 	"github.com/rifi331/financio/internal/store"
 )
 
@@ -144,5 +146,38 @@ func TestBuildWithPrevMonth(t *testing.T) {
 	d.PrevTxns = nil
 	if _, err := Build(d); err != nil {
 		t.Fatalf("empty prev month: %v", err)
+	}
+}
+
+func TestFitTextTruncatesToWidth(t *testing.T) {
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.AddPage()
+	long := "HEXTAR LUCKIN COFFEE (MALAYSIA) SDN BHD VERY LONG NAME"
+	got := fitText(pdf, long, 50)
+	if pdf.GetStringWidth(got) > 50 {
+		t.Errorf("fitted text still too wide: %q = %.1fmm", got, pdf.GetStringWidth(got))
+	}
+	if got == long {
+		t.Error("long name should have been truncated")
+	}
+	if got2 := fitText(pdf, "short", 50); got2 != "short" {
+		t.Errorf("short name must pass through, got %q", got2)
+	}
+}
+
+func TestBuildMulticurrencyLongNames(t *testing.T) {
+	d := sampleData()
+	d.Txns = append(d.Txns,
+		store.Transaction{Item: "HEXTAR LUCKIN COFFEE (MALAYSIA) SDN BHD SUPER LONG BRANCH NAME", CategoryName: "Meals", CurrencyCode: "IDR", TotalAmount: "1234567", Direction: "expense", EntryDate: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)},
+		store.Transaction{Item: "nasi kandar padang merlimau jaya pusat", CategoryName: "Meals", CurrencyCode: "USD", TotalAmount: "1234.50", Direction: "expense", EntryDate: time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)},
+	)
+	d.GroupByCategory = true
+	b, err := Build(d)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !bytes.HasPrefix(b, []byte("%PDF")) || !bytes.Contains(b, []byte("%%EOF")) {
+		t.Error("invalid PDF with long multi-currency rows")
 	}
 }

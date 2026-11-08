@@ -248,8 +248,9 @@ func drawPie(pdf *fpdf.Fpdf, catSums map[string]float64, code string, dp int) {
 		pdf.SetXY(105, ly)
 		pdf.CellFormat(5, 5, "", "0", 0, "C", true, 0, "")
 		pdf.SetXY(112, ly)
-		pdf.CellFormat(0, 5, fmt.Sprintf("%s - %s (%.1f%%)", n,
-			formatAmount(code, dp, catSums[n]), frac*100), "0", 0, "L", false, 0, "")
+		legend := fmt.Sprintf("%s - %s (%.1f%%)", n,
+			formatAmount(code, dp, catSums[n]), frac*100)
+		pdf.CellFormat(0, 5, fitText(pdf, legend, 195-112), "0", 0, "L", false, 0, "")
 	}
 	pdf.SetXY(15, cy+r+8)
 	pdf.CellFormat(0, 6, fmt.Sprintf("Total %s", formatAmount(code, dp, total)), "0", 1, "L", false, 0, "")
@@ -285,7 +286,7 @@ func txnTable(pdf *fpdf.Fpdf, txns []store.Transaction, d Data) {
 			}
 			pdf.SetFont("Helvetica", "B", 9)
 			pdf.SetTextColor(90, 107, 123)
-			pdf.CellFormat(0, 6, "Subtotal: "+strings.Join(subParts, " + "), "", 1, "R", false, 0, "")
+			pdf.CellFormat(0, 6, fitText(pdf, "Subtotal: "+strings.Join(subParts, " + "), 165), "", 1, "R", false, 0, "")
 			pdf.SetTextColor(0, 0, 0)
 			pdf.Ln(2)
 		}
@@ -315,7 +316,7 @@ func txnRows(pdf *fpdf.Fpdf, txns []store.Transaction, d Data) {
 		dp := decimalPlaces(d.Currencies, t.CurrencyCode)
 		for i, cell := range []string{
 			t.EntryDate.In(d.TZ).Format("02 Jan 06"),
-			truncate(t.Item, 55),
+			fitText(pdf, t.Item, w[1]-2),
 			t.CategoryName,
 			formatAmount(t.CurrencyCode, dp, amt),
 		} {
@@ -401,7 +402,7 @@ func drawBars(pdf *fpdf.Fpdf, catSums map[string]float64, code string, dp int) {
 		y := pdf.GetY()
 		pdf.SetXY(x0, y)
 		pdf.SetFont("Helvetica", "", 8)
-		pdf.CellFormat(labelW, rowH, truncate(n, 28), "", 0, "L", false, 0, "")
+		pdf.CellFormat(labelW, rowH, fitText(pdf, n, labelW-2), "", 0, "L", false, 0, "")
 		w := barMaxW * (catSums[n] / max)
 		col := palette[i%len(palette)]
 		pdf.SetFillColor(int(col[0]), int(col[1]), int(col[2]))
@@ -540,10 +541,30 @@ func drawMonthOverMonth(pdf *fpdf.Fpdf, d Data, expenses, income []store.Transac
 		ci, ce := cur[code][0], cur[code][1]
 		pi, pe := prev[code][0], prev[code][1]
 		pdf.CellFormat(30, 5.5, code, "1", 0, "L", false, 0, "")
-		pdf.CellFormat(0, 5.5, fmt.Sprintf("%s / %s   %s / %s   %s / %s",
+		pdf.CellFormat(0, 5.5, fitText(pdf, fmt.Sprintf("%s / %s   %s / %s   %s / %s",
 			formatAmount(code, dp, ci), formatAmount(code, dp, pi),
 			formatAmount(code, dp, ce), formatAmount(code, dp, pe),
-			formatAmount(code, dp, ci-ce), formatAmount(code, dp, pi-pe)),
+			formatAmount(code, dp, ci-ce), formatAmount(code, dp, pi-pe)), 150),
 			"1", 1, "L", false, 0, "")
 	}
+}
+
+// fitText truncates s (with "...") so its rendered width at the current
+// font stays within maxW mm. Character-count truncation overflows for wide
+// glyphs — measure instead.
+func fitText(pdf *fpdf.Fpdf, s string, maxW float64) string {
+	if pdf.GetStringWidth(s) <= maxW {
+		return s
+	}
+	// Binary search the longest prefix that fits with the ellipsis.
+	lo, hi := 0, len(s)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if pdf.GetStringWidth(s[:mid]+"...") <= maxW {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return s[:lo] + "..."
 }
