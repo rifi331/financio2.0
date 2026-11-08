@@ -181,3 +181,19 @@ func TestBuildMulticurrencyLongNames(t *testing.T) {
 		t.Error("invalid PDF with long multi-currency rows")
 	}
 }
+
+// Multi-currency reports must give each currency its own charts page (the
+// pie draws at fixed coordinates — two currencies on one page overlap).
+func TestBuildMulticurrencySeparateChartPages(t *testing.T) {
+	d := sampleData() // MYR + IDR expenses
+	b, err := Build(d)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	pages := strings.Count(string(b), "/Type /Page")
+	pages = pages - strings.Count(string(b), "/Type /Pages") // parent object
+	// summary + MoM(on summary) + 2 chart pages + 2 table pages = 5 minimum.
+	if pages < 5 {
+		t.Errorf("expected >=5 pages for 2-currency report, got %d", pages)
+	}
+}

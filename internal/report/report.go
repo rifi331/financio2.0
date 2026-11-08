@@ -102,52 +102,74 @@ func Build(d Data) ([]byte, error) {
 
 	drawMonthOverMonth(pdf, d, expenses, income)
 
-	// --- Section 2: expense pie per currency ---
-	secPie := pdf.AddLink()
-	pdf.AddPage()
-	pagePie := pdf.PageNo()
-	title(pdf, "Expenses by Category")
+	// --- Per-currency sections: charts page + that currency's tables.
+	// drawPie renders at fixed page coordinates, so every currency gets its
+	// own fresh page — multiple currencies on one page drew wedges on top of
+	// each other. Tables are split by currency too so MYR rows never mix
+	// with USD/IDR ones.
 	byCur := groupByCurrency(expenses)
 	codes := make([]string, 0, len(byCur))
 	for c := range byCur {
 		codes = append(codes, c)
 	}
+	incCur := groupByCurrency(income)
+	for c := range incCur {
+		if _, ok := byCur[c]; !ok {
+			codes = append(codes, c)
+		}
+	}
 	sort.Strings(codes)
+
+	secCharts := pdf.AddLink()
+	pageCharts := 0
+	secTables := pdf.AddLink()
+	pageTables := 0
 	for _, code := range codes {
 		catSums := sumByCategory(byCur[code])
-		if len(catSums) == 0 {
+
+		// Charts page for this currency (own page: pie uses fixed coords).
+		pdf.AddPage()
+		if pageCharts == 0 {
+			pageCharts = pdf.PageNo()
+		}
+		title(pdf, "Expenses by Category ("+code+")")
+		if len(catSums) > 0 {
+			drawPie(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+			drawBars(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+			drawInsights(pdf, catSums, code, decimalPlaces(d.Currencies, code))
+		} else {
+			note(pdf, "No expenses in this currency.")
+		}
+		drawBudgets(pdf, d, expenses, code, decimalPlaces(d.Currencies, code))
+
+		// Tables for this currency.
+		expRows := filterCurrency(expenses, code)
+		incRows := filterCurrency(income, code)
+		if len(expRows) == 0 && len(incRows) == 0 {
 			continue
 		}
-		pdf.Ln(2)
-		heading(pdf, code)
-		drawPie(pdf, catSums, code, decimalPlaces(d.Currencies, code))
-		drawBars(pdf, catSums, code, decimalPlaces(d.Currencies, code))
-		drawInsights(pdf, catSums, code, decimalPlaces(d.Currencies, code))
-		drawBudgets(pdf, d, expenses, code, decimalPlaces(d.Currencies, code))
-		if pdf.GetY() > 240 {
-			pdf.AddPage()
+		pdf.AddPage()
+		if pageTables == 0 {
+			pageTables = pdf.PageNo()
+		}
+		title(pdf, "Transactions ("+code+")")
+		heading(pdf, "Expenses "+code)
+		txnTable(pdf, expRows, d)
+		if len(incRows) > 0 {
+			pdf.Ln(4)
+			heading(pdf, "Income "+code)
+			txnTable(pdf, incRows, d)
 		}
 	}
 
-	// --- Section 3: expense transactions ---
-	secExp := pdf.AddLink()
-	pdf.AddPage()
-	pageExp := pdf.PageNo()
-	title(pdf, "Expenses")
-	txnTable(pdf, expenses, d)
-
-	// --- Section 4: income transactions ---
-	secInc := pdf.AddLink()
-	pdf.AddPage()
-	pageInc := pdf.PageNo()
-	title(pdf, "Income")
-	txnTable(pdf, income, d)
-
 	// Outline (bookmarks) for reader navigation.
 	pdf.SetLink(secSummary, 0, pageSummary)
-	pdf.SetLink(secPie, 0, pagePie)
-	pdf.SetLink(secExp, 0, pageExp)
-	pdf.SetLink(secInc, 0, pageInc)
+	if pageCharts > 0 {
+		pdf.SetLink(secCharts, 0, pageCharts)
+	}
+	if pageTables > 0 {
+		pdf.SetLink(secTables, 0, pageTables)
+	}
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -567,4 +589,15 @@ func fitText(pdf *fpdf.Fpdf, s string, maxW float64) string {
 		}
 	}
 	return s[:lo] + "..."
+}
+
+// filterCurrency keeps only rows in one currency.
+func filterCurrency(txns []store.Transaction, code string) []store.Transaction {
+	var out []store.Transaction
+	for _, t := range txns {
+		if t.CurrencyCode == code {
+			out = append(out, t)
+		}
+	}
+	return out
 }
