@@ -51,7 +51,7 @@ type TxStore interface {
 	DeleteOptionHelp(ctx context.Context, command string) error
 	GetTransactionDetail(ctx context.Context, id, userID int64) (store.DashboardDetail, bool, error)
 	MarkRecurringRun(ctx context.Context, id int64, day time.Time) error
-	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error)
+	ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time, ignoreItem bool) ([]store.DuplicateGroup, error)
 	GetPrompt(ctx context.Context, name string) (string, bool, error)
 	SetPrompt(ctx context.Context, name, template string) error
 	DeletePrompt(ctx context.Context, name string) (bool, error)
@@ -716,7 +716,10 @@ func (d *Dispatcher) handleDuplicate(ctx context.Context, chatID int64, user sto
 		return
 	}
 
-	groups, err := d.store.ListDuplicateGroups(ctx, user.ID, from, to)
+	// "hard" mode: same amount+currency+date regardless of item name \u2014
+	// catches text vs photo double-posts that differ in wording.
+	hardMode := strings.Contains(strings.ToLower(text), "hard")
+	groups, err := d.store.ListDuplicateGroups(ctx, user.ID, from, to, hardMode)
 	if err != nil {
 		d.log.Error("list duplicate groups failed", "err", err)
 		d.reply(ctx, chatID, recapFailHint("EN"))
@@ -760,11 +763,25 @@ func (d *Dispatcher) handleDuplicate(ctx context.Context, chatID int64, user sto
 		if hint != "" {
 			hint = " " + hint
 		}
+		itemLabel := g.Item
+		mixed := false
+		for _, r := range g.Rows {
+			if r.Item != g.Item {
+				mixed = true
+			}
+		}
+		if mixed {
+			itemLabel = "mixed items"
+		}
 		fmt.Fprintf(&b, "• %dx %s — %s (%s)%s\n",
 			len(g.IDs), recap.FormatAmountCode(g.Currency, dp(g.Currency), g.Amount),
-			g.Item, g.EntryDate.In(d.tz).Format("2006-01-02"), hint)
+			itemLabel, g.EntryDate.In(d.tz).Format("2006-01-02"), hint)
 		for _, r := range g.Rows {
-			fmt.Fprintf(&b, "  - #%d %s, %s\n", r.ID, r.Source, r.CreatedAt.In(d.tz).Format("02 Jan 15:04:05"))
+			itemPart := ""
+			if mixed {
+				itemPart = fmt.Sprintf(" %q,", r.Item)
+			}
+			fmt.Fprintf(&b, "  - #%d%s %s, %s\n", r.ID, itemPart, r.Source, r.CreatedAt.In(d.tz).Format("02 Jan 15:04:05"))
 		}
 		fmt.Fprintf(&b, "  [%s]\n", strings.Join(ids, " / "))
 	}

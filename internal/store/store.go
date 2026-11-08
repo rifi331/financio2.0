@@ -348,12 +348,18 @@ type DuplicateGroup struct {
 // [from, to) that share item, total_amount, currency and entry_date, where
 // the group has more than one member. Ordered by date; Rows carry per-row
 // context (source, created_at) for legit-vs-accidental judgment.
-func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]DuplicateGroup, error) {
+func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time, ignoreItem bool) ([]DuplicateGroup, error) {
 	// Window functions are illegal in WHERE — compute the per-group count in
-	// a CTE first, then filter on it.
+	// a CTE first, then filter on it. ignoreItem ("hard" mode) partitions by
+	// amount+currency+date only — catches text-entry vs photo-entry dupes
+	// whose item names differ.
+	partition := "t.item, t.total_amount, t.currency_code, t.entry_date"
+	if ignoreItem {
+		partition = "t.total_amount, t.currency_code, t.entry_date"
+	}
 	rows, err := s.pool.Query(ctx, `
 		WITH grouped AS (
-			SELECT t.*, count(*) OVER (PARTITION BY t.item, t.total_amount, t.currency_code, t.entry_date) AS grp_cnt
+			SELECT t.*, count(*) OVER (PARTITION BY `+partition+`) AS grp_cnt
 			FROM transaction_log t
 			WHERE t.user_id = $1 AND t.entry_date >= $2 AND t.entry_date < $3
 		)
@@ -376,7 +382,10 @@ func (s *Store) ListDuplicateGroups(ctx context.Context, userID int64, from, to 
 		if err != nil {
 			return nil, fmt.Errorf("scan duplicate row: %w", err)
 		}
-		key := t.Item + "|" + t.TotalAmount + "|" + t.CurrencyCode + "|" + t.EntryDate.Format("2006-01-02")
+		key := t.TotalAmount + "|" + t.CurrencyCode + "|" + t.EntryDate.Format("2006-01-02")
+		if !ignoreItem {
+			key = t.Item + "|" + key
+		}
 		g, ok := byKey[key]
 		if !ok {
 			g = &DuplicateGroup{Item: t.Item, Amount: t.TotalAmount, Currency: t.CurrencyCode, EntryDate: t.EntryDate}

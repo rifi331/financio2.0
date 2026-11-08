@@ -34,7 +34,8 @@ func TestHandleDuplicateListsGroups(t *testing.T) {
 			EntryDate: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), IDs: []int64{101, 102}},
 	}}
 	fai := &fakeAI{recapResponses: map[string]ai.RecapFilter{
-		"check duplicate october": {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
+		"check duplicate october":      {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
+		"check duplicate hard october": {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
 	}}
 	sender := &fakeSender{}
 	d := newTestDispatcher(fs, fai, sender)
@@ -145,8 +146,49 @@ func dupTestSetup(t *testing.T) (*fakeStore, *fakeAI, *fakeSender, *Dispatcher) 
 	t.Helper()
 	fs := &fakeStore{}
 	fai := &fakeAI{recapResponses: map[string]ai.RecapFilter{
-		"check duplicate october": {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
+		"check duplicate october":      {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
+		"check duplicate hard october": {IsRecapRequest: true, DateFrom: "2026-10-01", DateTo: "2026-11-01", Language: "EN"},
 	}}
 	sender := &fakeSender{}
 	return fs, fai, sender, newTestDispatcher(fs, fai, sender)
+}
+
+// "hard" mode groups by amount+date regardless of item names.
+func TestDuplicateHardMode(t *testing.T) {
+	fs, fai, sender, d := dupTestSetup(t)
+	d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate hard october")
+
+	if !fs.lastDupIgnoreItem {
+		t.Error("hard keyword must set ignoreItem")
+	}
+	if fs.lastDupRange == nil {
+		t.Error("period still parsed")
+	}
+	_ = sender
+	_ = fai
+
+	// Without "hard": normal mode.
+	d.handleDuplicate(context.Background(), 2, store.User{ID: 55}, "check duplicate october")
+	if fs.lastDupIgnoreItem {
+		t.Error("normal mode must not ignore items")
+	}
+}
+
+// Mixed-item groups (hard mode hits) label the header and show per-row items.
+func TestDuplicateMixedItemsRender(t *testing.T) {
+	fs, _, sender, d := dupTestSetup(t)
+	g := dupGroupAt(0, 401, "text")
+	second := dupGroupAt(0, 402, "photo").Rows[0]
+	second.Item = "HEXTAR LUCKIN SDN BHD"
+	g.IDs = append(g.IDs, 402)
+	g.Rows = append(g.Rows, second)
+	fs.dupGroups = []store.DuplicateGroup{g}
+
+	d.handleDuplicate(context.Background(), 1, store.User{ID: 55}, "check duplicate october")
+	body := strings.Join(sender.messages, "\n")
+	for _, want := range []string{"mixed items", `"mrt"`, `"HEXTAR LUCKIN SDN BHD"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("mixed rendering missing %q:\n%s", want, body)
+		}
+	}
 }

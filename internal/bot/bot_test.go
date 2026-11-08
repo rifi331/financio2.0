@@ -16,26 +16,27 @@ import (
 // --- fakes ---
 
 type fakeStore struct {
-	inserted         []store.NewTransaction
-	rows             []store.Transaction
-	nextID           int64
-	unauthorized     bool // when true, no user is known and EnsureUser records the attempt
-	ensured          []int64
-	lastFilter       *store.TxnFilter
-	dupGroups        []store.DuplicateGroup
-	prompts          map[string]string
-	sysparams        map[string]string
-	budgets          map[[2]string]string
-	lastPatch        *store.TxnPatch
-	recurring        []store.Recurring
-	userGroup        int64
-	groups           []store.GroupWithMembers
-	lastBudgetGroup  int64
-	lastSpendGroup   int64
-	alerted          map[string]bool
-	options          []store.OptionHelp
-	budgetGroupOwner map[[2]string]int64
-	lastDupRange     *[2]time.Time
+	inserted          []store.NewTransaction
+	rows              []store.Transaction
+	nextID            int64
+	unauthorized      bool // when true, no user is known and EnsureUser records the attempt
+	ensured           []int64
+	lastFilter        *store.TxnFilter
+	dupGroups         []store.DuplicateGroup
+	lastDupIgnoreItem bool
+	prompts           map[string]string
+	sysparams         map[string]string
+	budgets           map[[2]string]string
+	lastPatch         *store.TxnPatch
+	recurring         []store.Recurring
+	userGroup         int64
+	groups            []store.GroupWithMembers
+	lastBudgetGroup   int64
+	lastSpendGroup    int64
+	alerted           map[string]bool
+	options           []store.OptionHelp
+	budgetGroupOwner  map[[2]string]int64
+	lastDupRange      *[2]time.Time
 }
 
 func (f *fakeStore) ListActiveCategories(context.Context) ([]string, error) {
@@ -118,9 +119,10 @@ func (f *fakeStore) ListPrompts(_ context.Context) ([]store.Prompt, error) {
 	return out, nil
 }
 
-func (f *fakeStore) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time) ([]store.DuplicateGroup, error) {
+func (f *fakeStore) ListDuplicateGroups(ctx context.Context, userID int64, from, to time.Time, ignoreItem bool) ([]store.DuplicateGroup, error) {
 	r := [2]time.Time{from, to}
 	f.lastDupRange = &r
+	f.lastDupIgnoreItem = ignoreItem
 	return f.dupGroups, nil
 }
 
