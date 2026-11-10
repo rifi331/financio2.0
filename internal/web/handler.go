@@ -176,6 +176,15 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	net := map[string]float64{}
 	rows := make([]dashRow, 0, len(txns))
 	for _, t := range txns {
+		if t.Direction == "transfer" {
+			rows = append(rows, dashRow{
+				ID: t.ID, Date: t.EntryDate.In(s.tz).Format("02 Jan"), UserName: t.UserName,
+				Item: t.Item, Category: t.CategoryName,
+				Amount: recap.FormatAmountCode(t.CurrencyCode, dpOf(t.CurrencyCode), t.TotalAmount),
+				Source: "transfer",
+			})
+			continue // account movement: excluded from net
+		}
 		amt, _ := strconv.ParseFloat(t.TotalAmount, 64)
 		if t.Direction == "expense" {
 			amt = -amt

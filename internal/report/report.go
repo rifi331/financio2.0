@@ -99,6 +99,9 @@ func Build(d Data) ([]byte, error) {
 		pdf.Ln(2)
 	}
 	note(pdf, "Use the PDF bookmarks/sidebar to jump between sections.")
+	if n := countTransfers(d.Txns); n > 0 {
+		note(pdf, fmt.Sprintf("%d transfer(s) between users are excluded from totals.", n))
+	}
 
 	drawMonthOverMonth(pdf, d, expenses, income)
 
@@ -180,13 +183,28 @@ func Build(d Data) ([]byte, error) {
 
 func split(txns []store.Transaction) (expenses, income []store.Transaction) {
 	for _, t := range txns {
-		if t.Direction == "income" {
+		switch t.Direction {
+		case "income":
 			income = append(income, t)
-		} else {
+		case "transfer":
+			// account movement between registered users: neither side of
+			// the report's money math
+		default:
 			expenses = append(expenses, t)
 		}
 	}
 	return
+}
+
+// countTransfers reports how many rows are account movements.
+func countTransfers(txns []store.Transaction) int {
+	n := 0
+	for _, t := range txns {
+		if t.Direction == "transfer" {
+			n++
+		}
+	}
+	return n
 }
 
 func parse(s string) (float64, error) {

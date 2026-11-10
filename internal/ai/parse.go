@@ -24,6 +24,8 @@ type ParsedEntry struct {
 	Item          string   `json:"item"`
 	Category      string   `json:"category"`
 	Direction     string   `json:"direction"`
+	TransferTo    string   `json:"transfer_to"` // display name, set when direction=transfer
+	Note          string   `json:"-"`           // Go-side annotation (e.g. transfer fallback)
 	Amount        float64  `json:"amount"`
 	Currency      string   `json:"currency"`
 	Date          string   `json:"date"`
@@ -103,7 +105,10 @@ Rules:
   YYYY-MM-DD.
 - Category: choose exactly one from: %s.
 - Direction: "income" when the message is about receiving money (gaji, salary,
-  bonus, refund, received, diterima, transfer masuk); otherwise "expense".
+  bonus, refund, received, diterima, transfer masuk); "transfer" when the
+  message moves money to a PERSON ("transfer 100 to Dafina", "hantar 50 kat
+  mama", "send RM 30 to Rifi") \u2014 set transfer_to to that person's name and
+  leave transfer_to empty otherwise; otherwise "expense".
 - Item: a short label for the transaction.
 - details: list the individual line items when the message breaks the purchase
   down; each needs item, amount, qty (default 1), location (may be empty), and
@@ -121,12 +126,13 @@ func entrySchema() map[string]any {
 		"type":                 "object",
 		"additionalProperties": false,
 		"required": []string{"is_transaction", "item", "category", "direction",
-			"amount", "currency", "date", "details"},
+			"transfer_to", "amount", "currency", "date", "details"},
 		"properties": map[string]any{
 			"is_transaction": prop("boolean"),
 			"item":           prop("string"),
 			"category":       prop("string"),
-			"direction":      map[string]any{"type": "string", "enum": []string{"expense", "income"}},
+			"direction":      map[string]any{"type": "string", "enum": []string{"expense", "income", "transfer"}},
+			"transfer_to":    prop("string"),
 			"amount":         prop("number"),
 			"currency":       prop("string"),
 			"date":           prop("string"),

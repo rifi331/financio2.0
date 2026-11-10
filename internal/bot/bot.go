@@ -116,6 +116,10 @@ type Dispatcher struct {
 	// history is the per-chat conversation ring replayed to the model on
 	// text entries (nil-safe).
 	history *History
+	// user roster cache: avoids a DB hit per transfer entry; TTL below.
+	usersMu       sync.Mutex
+	usersCache    []store.User
+	usersCachedAt time.Time
 	// ensuredGroups remembers users already assigned a budget group.
 	ensuredMu     sync.Mutex
 	ensuredGroups map[int64]bool
@@ -282,7 +286,13 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 		return
 	}
 
-	reply := d.withBudgetLines(ctx, user, formatConfirmation(txn, currencies, firstName(user.DisplayName), lang), []store.Transaction{txn})
+	confirm := formatConfirmation(txn, currencies, firstName(user.DisplayName), lang)
+	if parsed.Direction == "transfer" {
+		if u, ok := d.knownUser(ctx, parsed.TransferTo); ok {
+			confirm = fmt.Sprintf("🔁 to: %s\n", u.DisplayName) + confirm
+		}
+	}
+	reply := d.withBudgetLines(ctx, user, confirm, []store.Transaction{txn})
 	d.history.Add(chatID, text, reply)
 	d.reply(ctx, chatID, reply)
 	return "saved"
@@ -858,11 +868,34 @@ func (d *Dispatcher) insertParsed(ctx context.Context, user store.User, p ai.Par
 		p.Direction = "expense"
 	}
 
+	// Transfers to a registered user are account movements, not spending.
+	// Unknown recipients fall back to expense with a note.
+	transferTo := ""
+	if p.Direction == "transfer" {
+		known, ok := d.knownUser(ctx, p.TransferTo)
+		if ok {
+			transferTo = known.DisplayName
+		} else {
+			p.Direction = "expense"
+			p.Note = "transfer to " + p.TransferTo + " (not a registered user)"
+		}
+	}
+
 	amount := formatMinor(p.Amount, currencyByCode(currencies, p.Currency).DecimalPlaces)
 
 	var desc []byte
-	if len(p.Details) > 0 {
+	switch {
+	case transferTo != "":
+		desc, _ = json.Marshal(map[string]any{"transferTo": transferTo})
+	case len(p.Details) > 0:
 		desc, _ = json.Marshal(p.Details)
+	}
+	if p.Note != "" && p.Direction != "transfer" {
+		var base []map[string]any
+		_ = json.Unmarshal(desc, &base)
+		if len(base) == 0 && desc == nil {
+			desc, _ = json.Marshal(map[string]any{"note": p.Note})
+		}
 	}
 
 	return d.store.InsertTransaction(ctx, store.NewTransaction{
