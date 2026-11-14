@@ -73,13 +73,14 @@ func (s *Store) UserGroupID(ctx context.Context, telegramID int64) (int64, error
 // EnsureUserGroup assigns a user their solo group on first message (named
 // after them) so new users' budgets are isolated by default.
 func (s *Store) EnsureUserGroup(ctx context.Context, telegramID int64, displayName string) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO budget_group (name) VALUES ($2)
-		ON CONFLICT (name) DO NOTHING`, displayName)
-	if err != nil {
+	// Two statements; each parameter is used in its own statement (an
+	// unused $1 makes Postgres fail with SQLSTATE 42P18).
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO budget_group (name) VALUES ($1)
+		ON CONFLICT (name) DO NOTHING`, displayName); err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, `
+	_, err := s.pool.Exec(ctx, `
 		UPDATE app_user SET budget_group_id = COALESCE(budget_group_id,
 			(SELECT id FROM budget_group WHERE name = $2))
 		WHERE id = $1`, telegramID, displayName)

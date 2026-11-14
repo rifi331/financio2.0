@@ -154,7 +154,8 @@ func (d *Dispatcher) Handle(ctx context.Context, updateID, chatID, userID int64,
 			"user_id", userID,
 			"intent", router.Classify(msg).Kind.String(),
 			"latency_ms", time.Since(start).Milliseconds(),
-			"outcome", outcome)
+			"outcome", outcome,
+			"text", truncateLogText(msg.Text))
 	}()
 
 	ctx, cancel := context.WithTimeout(ctx, d.messageTimeout())
@@ -275,9 +276,20 @@ func (d *Dispatcher) handleEntry(ctx context.Context, chatID int64, user store.U
 	}
 
 	if !parsed.IsTransaction {
+		d.log.Info("ai output", "is_transaction", false, "raw", truncateLogText(text))
 		d.reply(ctx, chatID, hint(lang))
 		return "not_transaction"
 	}
+	d.log.Info("ai output",
+		"is_transaction", true,
+		"item", parsed.Item,
+		"amount", parsed.Amount,
+		"currency", parsed.Currency,
+		"category", parsed.Category,
+		"direction", parsed.Direction,
+		"date", parsed.Date,
+		"transfer_to", parsed.TransferTo,
+		"details", len(parsed.Details))
 
 	txn, err := d.insertParsed(ctx, user, parsed, categories, currencies, now, "text", raw)
 	if err != nil {
@@ -1004,4 +1016,12 @@ func contains(list []string, s string) bool {
 
 func stackBytes() []byte {
 	return debug.Stack()
+}
+
+// truncateLogText caps logged message text (privacy + log size).
+func truncateLogText(s string) string {
+	if len(s) > 200 {
+		return s[:200] + "..."
+	}
+	return s
 }
