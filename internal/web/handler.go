@@ -27,11 +27,12 @@ type TxnLister interface {
 
 // Server serves the dashboard. A nil/empty token disables it (503).
 type Server struct {
-	store TxnLister
-	ring  *Ring
-	token string // raw DASHBOARD_TOKEN
-	tz    *time.Location
-	mux   *http.ServeMux
+	store  TxnLister
+	ring   *Ring
+	token  string // raw DASHBOARD_TOKEN
+	tz     *time.Location
+	mux    *http.ServeMux
+	ingest func(text string) // optional: notification ingestion callback
 }
 
 // compile-time: *store.Store satisfies TxnLister.
@@ -43,6 +44,7 @@ func New(st TxnLister, ring *Ring, token string, tz *time.Location) *Server {
 		tz = time.UTC
 	}
 	s := &Server{store: st, ring: ring, token: token, tz: tz, mux: http.NewServeMux()}
+	s.mux.HandleFunc("/ingest", s.handleIngest)
 	s.mux.HandleFunc("/txn/", s.handleTxnDetail)
 	s.mux.HandleFunc("/", s.handleDashboard)
 	s.mux.HandleFunc("/logs", s.handleLogs)
@@ -73,9 +75,14 @@ func (s *Server) authorized(r *http.Request) bool {
 	if c, err := r.Cookie(cookieName); err == nil && c.Value != "" {
 		return subtle.ConstantTimeCompare([]byte(c.Value), []byte(tokenHash(s.token))) == 1
 	}
-	// Allow ?key=... for simple bookmarking.
+	// Allow ?key=... for simple bookmarking, and an X-Token header for
+	// automation (MacroDroid/Tasker POSTs).
 	if k := r.URL.Query().Get("key"); k != "" &&
 		subtle.ConstantTimeCompare([]byte(k), []byte(s.token)) == 1 {
+		return true
+	}
+	if h := r.Header.Get("X-Token"); h != "" &&
+		subtle.ConstantTimeCompare([]byte(h), []byte(s.token)) == 1 {
 		return true
 	}
 	return false
@@ -216,6 +223,38 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Count:      len(rows),
 	}
 	renderPage(w, dashTmpl, data)
+}
+
+// SetIngest wires the notification-ingestion callback (phone automation ->
+// this endpoint -> dispatcher, as if the user typed the text).
+func (s *Server) SetIngest(f func(text string)) { s.ingest = f }
+
+// handleIngest accepts POST {"text": "..."} authenticated with the dashboard
+// token (header X-Token, or ?key=). The text is dispatched like a typed
+// message; the reply goes to the bot chat as usual.
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	if s.ingest == nil {
+		http.Error(w, "ingest not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		http.Error(w, `body must be {"text":"..."}`, http.StatusBadRequest)
+		return
+	}
+	go s.ingest(body.Text)
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte("queued"))
 }
 
 func (s *Server) handleTxnDetail(w http.ResponseWriter, r *http.Request) {

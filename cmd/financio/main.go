@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -126,10 +127,24 @@ func run() error {
 	// At most 4 messages processed concurrently, per-chat order preserved.
 	pool4 := bot.NewPool(4)
 
-	// Health endpoint + optional read-only dashboard (same port).
+	// Health endpoint + optional read-only dashboard (same port). The
+	// dashboard also exposes POST /ingest for phone automation (MacroDroid):
+	// notification text -> dispatched as if the primary user typed it.
+	dash := web.New(st, ring, cfg.DashboardToken, tz)
+	dash.SetIngest(func(text string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		u, ok := dispatcher.KnownUser(ctx, cfg.AllowedUsers[0])
+		if !ok {
+			slog.Warn("ingest: primary user not found", "name", cfg.AllowedUsers[0])
+			return
+		}
+		first, last := splitName(u.DisplayName)
+		dispatcher.Handle(ctx, 0, u.ID, u.ID, first, last, router.Message{Text: text})
+	})
 	srv := &http.Server{
 		Addr:    ":" + cfg.HealthPort,
-		Handler: web.New(st, ring, cfg.DashboardToken, tz),
+		Handler: dash,
 	}
 
 	errCh := make(chan error, 2)
@@ -209,6 +224,15 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+func splitName(display string) (first, last string) {
+	parts := strings.SplitN(strings.TrimSpace(display), " ", 2)
+	first = parts[0]
+	if len(parts) > 1 {
+		last = parts[1]
+	}
+	return
 }
 
 func dispatcherMsgTimeout(d *bot.Dispatcher) string {

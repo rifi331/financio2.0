@@ -254,3 +254,49 @@ func (arrayStore) GetDashboardTransaction(_ context.Context, id int64) (store.Da
 	}
 	return store.DashboardDetail{Description: []byte(`[{"item":"kopi susu","amount":5.5,"qty":2,"location":"kopitiam","note":"voucher -0.5"}]`)}, true, nil
 }
+
+func TestIngestEndpoint(t *testing.T) {
+	s, _, _ := newTestServer()
+	got := ""
+	s.SetIngest(func(text string) { got = text })
+
+	// Unauthorized.
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest("POST", "/ingest", strings.NewReader(`{"text":"paid rm 12.90"}`)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
+	}
+
+	// Wrong method.
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest("GET", "/ingest?key=sekret", nil))
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("want 405, got %d", rec.Code)
+	}
+
+	// Valid via X-Token header (MacroDroid path).
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/ingest", strings.NewReader(`{"text":"paid rm 12.90 to mamak"}`))
+	req.Header.Set("X-Token", "sekret")
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("want 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Bad body.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/ingest", strings.NewReader(`nope`))
+	req.Header.Set("X-Token", "sekret")
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
+	}
+
+	// Callback fired (async; give it a moment).
+	for i := 0; i < 50 && got == ""; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got != "paid rm 12.90 to mamak" {
+		t.Errorf("callback text = %q", got)
+	}
+}

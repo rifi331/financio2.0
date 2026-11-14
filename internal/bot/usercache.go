@@ -68,3 +68,9 @@ func (d *Dispatcher) cachedUsers(ctx context.Context) []store.User {
 	d.usersCachedAt = time.Now()
 	return users
 }
+
+// KnownUser exposes roster resolution for callers outside the bot package
+// (the ingest callback in main).
+func (d *Dispatcher) KnownUser(ctx context.Context, name string) (store.User, bool) {
+	return d.knownUser(ctx, name)
+}
