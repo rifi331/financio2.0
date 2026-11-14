@@ -75,3 +75,53 @@ completions + structured outputs) · `internal/bot` (dispatcher, worker pool)
 
 Build-prompt series lives in `prompts/`; progress in `status.md`; scope and
 schema in `docs/BRIEF.md`.
+
+## Phone notification ingestion (MacroDroid)
+
+Payments can be logged automatically from app notifications (TNG eWallet, GPay,
+RHB, myBCA) without touching Telegram:
+
+1. Set `DASHBOARD_TOKEN` (already required for the web dashboard).
+2. In MacroDroid, create a macro:
+   - **Trigger**: Notification Received → select the payment apps → Text
+     content, enable regex, use e.g. `(?i)paid|payment|transaction|bayar|rm|spent`
+     (⚠️ the field is **regex**, NOT a comma-separated list — a comma list is
+     matched as one literal string and matches nothing)
+   - **Actions**:
+     1. *(optional)* Toast Message `FIRED: {not_title}: {notification}` —
+        shows exactly what was captured
+     2. HTTP Request → POST `https://financio.parifidev.com/ingest`
+        (Cloudflare tunnel) or `http://<truenas-ip>:7777/ingest` (LAN)
+        - Header: `X-Token: <DASHBOARD_TOKEN>`
+        - Content Body type **Text**, body: `{not_title}: {notification}`
+        (plain text is accepted and needs no JSON escaping — quotes in
+        notification text break the JSON form)
+3. Exempt MacroDroid from battery optimization, or night-time notifications
+   will be missed.
+
+The text is parsed like a typed message; confirmations arrive in Telegram.
+Ingested entries are attributed to the primary user (first `ALLOWED_USERS` name).
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| Every AI command fails (`Could not parse that`, recap/report errors) | OpenAI call rejected: check credit balance, key validity (`OPENAI_API_KEY` env), or model (`/param list`; `/param set openai_model gpt-4o-mini`). DB-only commands (`/options`, `/budget list`) working while AI fails = key/credit problem. |
+| PDF details show raw JSON instead of a table | Old renderer build — description JSONB has two shapes (2.0 bare array, 1.0 `{"details":...}`); needs v2.8.4+. |
+| Report pie is one solid color / legends overlap | Two currencies drawn on one page — fixed in v2.9.2 (per-currency chart pages). |
+| `check duplicate` fails on every month | Fixed in v2.8.6 (window function in WHERE was illegal SQL). |
+| MacroDroid posts `{notification_title}: ...` literally | Wrong magic-text names — use `{not_title}` and `{notification}` from the {} picker, and regex text matching (see above). |
+| Rotated a credential and the bot broke | Expected — put the new value in the TrueNAS app env and recreate. |
+
+## Verifying / inspecting data
+
+```sh
+# recent transactions incl. description JSON
+sudo docker exec <pg-container> psql -U postgres -d financio \
+  -c "select id, item, direction, description from financio2.transaction_log order by created_at desc limit 5;"
+# migration level
+sudo docker exec <pg-container> psql -U postgres -d financio \
+  -c "select * from financio2.schema_migrations order by id;"
+```
+
+Dashboard (`/txn/<id>`) shows the same detail per transaction.
