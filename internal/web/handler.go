@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -248,11 +249,21 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Text string `json:"text"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
-		http.Error(w, `body must be {"text":"..."}`, http.StatusBadRequest)
+	raw, _ := io.ReadAll(r.Body)
+	text := ""
+	if err := json.Unmarshal(raw, &body); err == nil {
+		text = body.Text
+	} else {
+		// Fallback: raw plain-text body (phone automation can't always
+		// JSON-escape notification content, and a stray quote would break
+		// the JSON form).
+		text = string(raw)
+	}
+	if strings.TrimSpace(text) == "" {
+		http.Error(w, `body must be {"text":"..."} or plain text`, http.StatusBadRequest)
 		return
 	}
-	go s.ingest(body.Text)
+	go s.ingest(text)
 	w.WriteHeader(http.StatusAccepted)
 	_, _ = w.Write([]byte("queued"))
 }
